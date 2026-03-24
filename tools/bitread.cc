@@ -67,9 +67,9 @@ uint32_t frame_range_begin = 0, frame_range_end = 0;
 std::vector<uint32_t> zero_frame(101);
 
 struct BitReader {
-	BitReader(const std::vector<uint8_t>& bytes) : bytes_(bytes) {}
+	BitReader(const absl::Span<uint8_t>& bytes) : bytes_(bytes) {}
 
-	const std::vector<uint8_t>& bytes_;
+	const absl::Span<uint8_t>& bytes_;
 
 	template <typename T>
 	int operator()(T& arg) {
@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
 		frame_range_end = strtol(p.second.c_str(), nullptr, 0) + 1;
 	}
 
-	std::vector<uint8_t> in_bytes;
+	absl::Span<uint8_t> in_bytes;
 	if (argc == 2) {
 		auto in_file_name = argv[1];
 		auto in_file =
@@ -333,16 +333,18 @@ int main(int argc, char** argv) {
 		std::cout << "Bitstream size: " << in_file->size() << " bytes"
 		          << std::endl;
 
-		in_bytes = std::vector<uint8_t>(
-		    static_cast<uint8_t*>(in_file->data()),
-		    static_cast<uint8_t*>(in_file->data()) + in_file->size());
+		in_bytes = absl::Span<uint8_t>(
+		    static_cast<uint8_t*>(in_file->data()), in_file->size());
 	} else {
+		std::vector<uint8_t> t;
 		while (1) {
 			int c = getchar();
 			if (c == EOF)
 				break;
-			in_bytes.push_back(c);
+			t.push_back(c);
 		}
+		in_bytes = absl::Span<uint8_t>(
+			static_cast<uint8_t*>(t.data()), t.size());
 
 		std::cout << "Bitstream size: " << in_bytes.size() << " bytes"
 		          << std::endl;
