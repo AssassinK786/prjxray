@@ -42,15 +42,19 @@ export XRAY_IOI3_TILES="LIOI_X82Y10 RIOI_X311Y10"
 # (X0,1,4,5,8,9). A too-large region lets the placer pack everything into CLBLM
 # (which produced no CLBLL segdata -> segmatch error). DSP48/RAMB/IOB ranges
 # cover those resources for the DSP/BRAM/IOB fuzzers.
-export XRAY_ROI="SLICE_X0Y0:SLICE_X11Y49 DSP48_X0Y0:DSP48_X5Y39 RAMB18_X0Y0:RAMB18_X5Y39 RAMB36_X0Y0:RAMB36_X5Y19 IOB_X0Y0:IOB_X0Y49"
+# Positioned at Y50-99 (clock region 1), OFF the device bottom edge: edge tiles
+# at Y0 can't exercise features like BRAM36 ECC/cascade (RAM_EXTENSION), which
+# fails segmaker's all-tags-used check (027-bram36-config). RAMB36 here is at
+# Y10-19 so cascade is exercisable. Same CLBLL/CLBLM columns as before.
+export XRAY_ROI="SLICE_X0Y50:SLICE_X11Y99 DSP48_X0Y10:DSP48_X5Y29 RAMB18_X0Y20:RAMB18_X5Y39 RAMB36_X0Y10:RAMB36_X5Y19 IOB_X0Y50:IOB_X0Y99"
 # Grid (tile) coordinates of the same physical region as XRAY_ROI above, used by
 # fuzzers that go through util.get_roi()/roi_xy() (e.g. 018-clb-ram). On
 # xc7vx485t the XRAY_ROI SLICE block (X0-11, Y0-49) maps to grid_x 5-19,
 # grid_y 313-363; bounds are exclusive on the high end.
 export XRAY_ROI_GRID_X1="5"
 export XRAY_ROI_GRID_X2="20"
-export XRAY_ROI_GRID_Y1="313"
-export XRAY_ROI_GRID_Y2="364"
+export XRAY_ROI_GRID_Y1="261"
+export XRAY_ROI_GRID_Y2="312"
 
 source $(dirname ${BASH_SOURCE[0]})/../utils/environment.sh
 
