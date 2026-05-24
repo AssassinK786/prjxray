@@ -89,6 +89,14 @@ HAS_HIGH_PERFORMANCE_BANKS=1
 else
 HAS_HIGH_PERFORMANCE_BANKS=0
 endif
+# Virtex-7 "VX" parts are high-performance-bank only (no IOB33/IOI3 HR tiles),
+# so the HR-bank IOB/IOI fuzzers have no sites to target there. The HP (iob18/
+# ioi18) fuzzers cover those parts instead.
+ifeq ($(XRAY_DATABASE),virtex7)
+HAS_HIGH_RANGE_BANKS=0
+else
+HAS_HIGH_RANGE_BANKS=1
+endif
 $(eval $(call fuzzer,000-init-db,,part))
 
 ifneq ($(FUZZONLY),Y)
@@ -122,7 +130,9 @@ $(eval $(call fuzzer,026-bram-data,005-tilegrid,all))
 $(eval $(call fuzzer,027-bram36-config,005-tilegrid,all))
 $(eval $(call fuzzer,028-fifo-config,005-tilegrid,all))
 $(eval $(call fuzzer,029-bram-fifo-config,005-tilegrid,all))
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,030-iob,005-tilegrid,all))
+endif
 ifeq ($(HAS_HIGH_PERFORMANCE_BANKS),1)
 $(eval $(call fuzzer,030-iob18,005-tilegrid,all))
 endif
@@ -134,20 +144,27 @@ ifeq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 # The fuzzer can be re-enabled once the conflicting bits are not generated anymore
 $(eval $(call fuzzer,034b-cmt-mmcm-pips,005-tilegrid 071-ppips,all))
 endif
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,035-iob-ilogic,005-tilegrid,all))
 $(eval $(call fuzzer,035a-iob-idelay,005-tilegrid,all))
+endif
 ifeq ($(HAS_HIGH_PERFORMANCE_BANKS),1)
 $(eval $(call fuzzer,035a-iob18-idelay,005-tilegrid,all))
 $(eval $(call fuzzer,035a-iob18-odelay,005-tilegrid,all))
 endif
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,035b-iob-iserdes,005-tilegrid,all))
 $(eval $(call fuzzer,036-iob-ologic,005-tilegrid,all))
+endif
 ifeq ($(HAS_HIGH_PERFORMANCE_BANKS),1)
 $(eval $(call fuzzer,036-iob18-ologic,005-tilegrid,all))
 endif
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,037-iob-pips,005-tilegrid 035b-iob-iserdes,all))
+endif
 ifeq ($(HAS_HIGH_PERFORMANCE_BANKS),1)
-$(eval $(call fuzzer,037-iob18-pips,005-tilegrid 035b-iob-iserdes,all))
+# 035b-iob-iserdes is HR-only; on HP-only parts 037-iob18-pips runs without it.
+$(eval $(call fuzzer,037-iob18-pips,005-tilegrid $(if $(filter 1,$(HAS_HIGH_RANGE_BANKS)),035b-iob-iserdes),all))
 endif
 $(eval $(call fuzzer,038-cfg,005-tilegrid,all))
 $(eval $(call fuzzer,038-cfg-startup,005-tilegrid,all))
@@ -159,11 +176,18 @@ $(eval $(call fuzzer,043-clk-rebuf-pips,005-tilegrid,all))
 $(eval $(call fuzzer,044-clk-bufg-pips,046-clk-bufg-muxed-pips,all))
 $(eval $(call fuzzer,045-hclk-cmt-pips,005-tilegrid,all))
 $(eval $(call fuzzer,046-clk-bufg-muxed-pips,005-tilegrid,all))
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,047-hclk-ioi-pips,005-tilegrid,all))
+endif
 ifeq ($(HAS_HIGH_PERFORMANCE_BANKS),1)
 $(eval $(call fuzzer,047-hclk-ioi18-pips,005-tilegrid,all))
 endif
+# 047a depends on the hclk-ioi pips fuzzer: use the HR one if present, else HP.
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
 $(eval $(call fuzzer,047a-hclk-idelayctrl-pips,047-hclk-ioi-pips,all))
+else
+$(eval $(call fuzzer,047a-hclk-idelayctrl-pips,047-hclk-ioi18-pips,all))
+endif
 $(eval $(call fuzzer,048-int-piplist,005-tilegrid,all))
 $(eval $(call fuzzer,049-int-imux-gfan,048-int-piplist,all))
 $(eval $(call fuzzer,050-pip-seed,048-int-piplist,all))
