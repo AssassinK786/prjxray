@@ -9,7 +9,7 @@ N ?= 50
 
 include ../fuzzer.mk
 
-ifeq ($(XRAY_DATABASE),kintex7)
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 database: build/segbits_hclk_ioi.db
 else
 database: build/segbits_hclk_ioi3.db
@@ -28,7 +28,7 @@ build/segbits_hclk_ioi3.db: build/segbits_hclk_ioi3.rdb
 
 # The fuzzer results for the high performance banks
 # are identical, so just copy those
-ifeq ($(XRAY_DATABASE),kintex7)
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 build/segbits_hclk_ioi.db: build/segbits_hclk_ioi3.db
 	sed -e 's/HCLK_IOI3/HCLK_IOI/g' $< > $@
 	cp build/mask_hclk_ioi3.db build/mask_hclk_ioi.db
@@ -37,7 +37,7 @@ endif
 pushdb: database
 	${XRAY_MERGEDB} hclk_ioi3 build/segbits_hclk_ioi3.db
 	${XRAY_MERGEDB} mask_hclk_ioi3 build/mask_hclk_ioi3.db
-ifeq ($(XRAY_DATABASE),kintex7)
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 	${XRAY_MERGEDB} hclk_ioi build/segbits_hclk_ioi.db
 	${XRAY_MERGEDB} mask_hclk_ioi build/mask_hclk_ioi.db
 endif

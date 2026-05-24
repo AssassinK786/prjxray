@@ -84,7 +84,7 @@ fuzzer_$(1): fuzzer_ok/fuzzer_$(1)_$(XRAY_PART).ok
 
 endef
 
-ifeq ($(XRAY_DATABASE),kintex7)
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 HAS_HIGH_PERFORMANCE_BANKS=1
 else
 HAS_HIGH_PERFORMANCE_BANKS=0
@@ -99,7 +99,7 @@ all:: 005-tilegrid/run.ok
 	touch 005-tilegrid/run.ok
 endif
 
-ifneq ($(XRAY_DATABASE),kintex7)
+ifeq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 $(eval $(call fuzzer,007-timing,005-tilegrid,all))
 endif
 $(eval $(call fuzzer,010-clb-lutinit,005-tilegrid,all))
@@ -124,7 +124,7 @@ endif
 $(eval $(call fuzzer,031-cmt-mmcm,005-tilegrid,all))
 $(eval $(call fuzzer,032-cmt-pll,005-tilegrid,all))
 $(eval $(call fuzzer,034-cmt-pll-pips,005-tilegrid 071-ppips,all))
-ifneq ($(XRAY_DATABASE),kintex7)
+ifeq (,$(filter $(XRAY_DATABASE),kintex7 virtex7))
 # FIXME: 034b fuzzer is generating conflicting bits around the FREQ_BB[N] bits.
 # The fuzzer can be re-enabled once the conflicting bits are not generated anymore
 $(eval $(call fuzzer,034b-cmt-mmcm-pips,005-tilegrid 071-ppips,all))
@@ -191,6 +191,8 @@ $(eval $(call fuzzer,065-gtp-common-pips,005-tilegrid,part))
 $(eval $(call fuzzer,065b-gtp-common-pips,005-tilegrid,part))
 $(eval $(call fuzzer,066-gtp-int-pips,005-tilegrid,all))
 endif
+# GTX transceiver config fuzzers. Kintex-7 only: the virtex7 package
+# (xc7vx485t-ffg1761) bonds only ~7 of 14 GTX quads, so GTX is skipped there.
 ifeq ($(XRAY_DATABASE),kintex7)
 $(eval $(call fuzzer,063-gtx-common-conf,005-tilegrid,part))
 $(eval $(call fuzzer,064-gtx-channel-conf,005-tilegrid,part))

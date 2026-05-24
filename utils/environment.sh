@@ -30,6 +30,11 @@ source $XRAY_UTILS_DIR/environment.python.sh
 # Set environment to default output and overwrite localisation settings
 export LC_ALL=C
 
+# Default I/O standard used by the fuzzers' generic clk/data ports. Parts whose
+# general purpose I/O cannot drive 3.3V (e.g. Virtex-7 "VX" high-performance
+# banks) override this in their settings/<family>.sh (see settings/virtex7.sh).
+export XRAY_IOSTANDARD="${XRAY_IOSTANDARD:-LVCMOS33}"
+
 # tools
 export XRAY_GENHEADER="${XRAY_UTILS_DIR}/genheader.sh"
 export XRAY_BITREAD="${XRAY_TOOLS_DIR}/bitread --part_file ${XRAY_PART_YAML}"
@@ -48,9 +53,13 @@ export XRAY_VIVADO="${XRAY_UTILS_DIR}/vivado.sh"
 
 # Verify an approved version is in use
 export XRAY_VIVADO_SETTINGS="${XRAY_VIVADO_SETTINGS:-/opt/Xilinx/Vivado/2017.2/settings64.sh}"
-# Vivado v2017.2 (64-bit)
-if [ "$(${XRAY_VIVADO} -h |grep Vivado |cut -d\  -f 2)" != "v2017.2" ] ; then
-    echo "Requires Vivado 2017.2. See https://github.com/SymbiFlow/prjxray/issues/14"
+# Most families require Vivado v2017.2 (see prjxray issue #14). A family may
+# override XRAY_VIVADO_VERSION (and XRAY_VIVADO_SETTINGS) in its settings file:
+# e.g. virtex7 needs v2020.1 because only that version checks out a Virtex-7
+# synthesis license on this setup (2017.2 is refused by the license manager).
+export XRAY_VIVADO_VERSION="${XRAY_VIVADO_VERSION:-v2017.2}"
+if [ "$(${XRAY_VIVADO} -h |grep Vivado |cut -d\  -f 2)" != "${XRAY_VIVADO_VERSION}" ] ; then
+    echo "Requires Vivado ${XRAY_VIVADO_VERSION}. See https://github.com/SymbiFlow/prjxray/issues/14"
     # Can't exit since sourced script
     # Trash a key environment variable to preclude use
     export XRAY_DIR="/bad/vivado/version"

@@ -237,7 +237,7 @@ it.
 Current the focus has been on the Artix-7 50T part. This structure is common
 between all footprints of the 15T, 35T and 50T varieties.
 
-We have also started experimenting with the Kintex-7 parts.
+We have also started experimenting with the Kintex-7 and Virtex-7 parts.
 
 The aim is to eventually document all parts in the Xilinx 7-series FPGAs but we
 can not do this alone, **we need your help**!
