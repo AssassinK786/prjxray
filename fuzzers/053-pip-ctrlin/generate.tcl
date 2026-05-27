@@ -65,8 +65,11 @@ for {gets $fp line} {$line != ""} {gets $fp line} {
 }
 close $fp
 
-# each run can fail up to three times so we need to prepare 3*todo_lines tiles to work on
-set tiles [expr 3 * [llength $todo_lines]]
+# Each todo line gets a 2-tile window for routing retries, so reserve
+# 2*todo_lines tiles. The off-edge Virtex-7 ROI holds fewer INT tiles than the
+# 3*N the upstream fuzzer assumed (randsample_list then padded the list with
+# empty entries, breaking the -dict below); 2*N fits this ROI.
+set tiles [expr 2 * [llength $todo_lines]]
 
 set int_l_tiles [randsample_list $tiles [filter [pblock_tiles roi] {TYPE == INT_L}]]
 set int_r_tiles [randsample_list $tiles [filter [pblock_tiles roi] {TYPE == INT_R}]]
@@ -84,7 +87,7 @@ for {set idx 0} {$idx < [llength $todo_lines]} {incr idx} {
 
     set tries 0
     while {1} {
-        set tile_idx [expr $tries + [expr $idx * 3]]
+        set tile_idx [expr $tries + [expr $idx * 2]]
         incr tries
 
         if {$tile_type == "INT_L"} {set tile [lindex $int_l_tiles $tile_idx]; set other_tile [lindex $int_r_tiles $tile_idx]}
@@ -121,7 +124,8 @@ for {set idx 0} {$idx < [llength $todo_lines]} {incr idx} {
         route_design -unroute -nets $mynet
 
         # sometimes it gets stuck in specific src -> dst locations
-        if {$tries >= 3} {
+        # 2-tile window per todo line (see tile reservation above)
+        if {$tries >= 2} {
             error "ERROR: failed to route net after $tries tries"
         }
     }
