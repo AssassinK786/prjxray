@@ -118,12 +118,10 @@ $(eval $(call fuzzer,014-clb-ffsrcemux,005-tilegrid,all))
 $(eval $(call fuzzer,015-clb-nffmux,005-tilegrid,all))
 $(eval $(call fuzzer,016-clb-noutmux,005-tilegrid,all))
 $(eval $(call fuzzer,017-clb-precyinit,005-tilegrid,all))
-# 018-clb-ram skipped for virtex7: Vivado 2020.1 packs the SRL/RAM primitives
-# into different BEL slots than the fuzzer pins, failing its BEL-match assertion
-# (a Vivado-version behavioural difference, not an ROI issue).
-ifeq (,$(filter $(XRAY_DATABASE),virtex7))
+# 018-clb-ram (distributed RAM / SRL): works on virtex7 once generate.py skips
+# slices placed outside the dumped pblock (the grid-ROI yields a SLICE column
+# just past the XRAY_ROI box); see the graceful-skip in generate.py.
 $(eval $(call fuzzer,018-clb-ram,005-tilegrid,all))
-endif
 $(eval $(call fuzzer,019-clb-ndi1mux,005-tilegrid,all))
 $(eval $(call fuzzer,025-bram-config,005-tilegrid,all))
 $(eval $(call fuzzer,026-bram-data,005-tilegrid,all))
