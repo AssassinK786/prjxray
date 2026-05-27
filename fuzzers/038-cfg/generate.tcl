@@ -26,6 +26,9 @@ set_property BITSTREAM.GENERAL.PERFRAMECRC YES [current_design]
 
 set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets clk_IBUF]
 set_property IS_ENABLED 0 [get_drc_checks {DRC NDRV-1}]
+# BSCAN JTAG_CHAIN=3 -> BSCAN_X0Y0 mapping that Vivado 2020.1 rejects via
+# PDRC-2; same disable as 005-tilegrid/cfg/generate.tcl for the same reason.
+set_property IS_ENABLED 0 [get_drc_checks {PDRC-2}]
 # Disable MMCM frequency etc sanity checks
 #set_property IS_ENABLED 0 [get_drc_checks {PDRC-29}]
 #set_property IS_ENABLED 0 [get_drc_checks {PDRC-30}]
