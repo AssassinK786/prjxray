@@ -13,7 +13,9 @@ TODO_RE=".*"
 EXCLUDE_RE=".*((PHASER)|(CLKDIVF)|(CLKDIVP)|(CLKDIVB)|(IOI_ILOGIC[01]_O)|(IOI_OLOGIC[01]_CLKB?\.)|(IOI_IMUX_RC)|(IOI_OLOGIC[01]_[OT]FB)|(OCLKM.*IMUX31)|IOI_ODELAY[01]_CLKIN.IOI_OCLK_[01]|RIOI_O[01].RIOI_ODELAY[01]_DATAOUT|RIOI_O[01].RIOI_OLOGIC[01]_OQ).*"
 
 MAKETODO_FLAGS=--pip-type ${PIP_TYPE} --seg-type $(PIP_TYPE) --re $(TODO_RE) --sides "xr" --exclude-re $(EXCLUDE_RE)
-N = 120
+# N=120 is excessive on a large device like xc7vx485t; 20 (matches other pip
+# fuzzers) is plenty for segmatch convergence and roughly 6x faster per iter.
+N = 20
 
 SPECIMENS_DEPS=build/cmt_regions.csv
 
