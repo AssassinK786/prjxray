@@ -260,6 +260,17 @@ The work spans four sibling branches on the openXC7 GitHub:
 | openXC7/nextpnr-xilinx | `virtex7-support` | RAM128/256X1S packing + INT-tile constant-net bridge |
 | openXC7/demo-projects | `virtex7-branch` | VC707 reference `.bit` files + sources |
 
+> **Vivado version.** This port was developed and validated against
+> **Vivado 2020.1**. Other 2018+ releases may well work — the fuzzers and
+> Tcl helpers are not knowingly using any 2020.1-specific feature — but the
+> upstream-recommended **2017.2 is too old** for Virtex-7 here: it predates
+> the device support files we need (`xc7vx485tffg1761-2` HP-bank IOB18
+> behaviour, several `HCLK_IOI`/`CMT` properties the fuzzers query, the
+> `write_pip_txtdata` bulk-fetch paths the `utils.tcl` patch exercises).
+> Set `XRAY_VIVADO_SETTINGS` accordingly:
+>
+>     export XRAY_VIVADO_SETTINGS=/opt/Xilinx/Vivado/2020.1/settings64.sh
+
 ### Achievements
 
 - **End-to-end open flow on real hardware (VC707):**
