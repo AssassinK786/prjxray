@@ -245,21 +245,58 @@ can not do this alone, **we need your help**!
 ## Virtex-7 Port Status (`virtex7-support` branch)
 
 This branch ports the openXC7 prjxray flow to **Virtex-7 `xc7vx485tffg1761-2`**
-(VC707 board), modelled on the Kintex-7 sub-flow. The goal is a fully
-open-source bit→DCP / fasm→bit round-trip on a Virtex-7 HP-only part.
+(VC707 board), modelled on the Kintex-7 sub-flow. The original goal — a fully
+open-source bit→DCP / fasm→bit round-trip on a Virtex-7 HP-only part — has
+been met for the four VC707 reference designs (`rst_to_led`, `counter`,
+`counter_bufr`, `telegraph`) and end-to-end for the PicoSoC UART demo running
+on real silicon.
+
+The work spans four sibling branches on the openXC7 GitHub:
+
+| Repo | Branch | Carries |
+|---|---|---|
+| openXC7/prjxray | `virtex7-support` | this DB tree + `fasm2frames.py` bank-glue rules |
+| openXC7/nextpnr-xilinx-meta | `virtex7-support` | per-site metadata + `wire_intents.json` |
+| openXC7/nextpnr-xilinx | `virtex7-support` | RAM128/256X1S packing + INT-tile constant-net bridge |
+| openXC7/demo-projects | `virtex7-branch` | VC707 reference `.bit` files + sources |
 
 ### Achievements
 
-- **End-to-end smoke test passes** on `xc7vx485tffg1761-2`: System-Verilog
-  → Yosys → nextpnr-xilinx → FASM → `fasm2frames.py` → `xc7frames2bit`
-  → `.bit`. First run required 3 patches and surfaced 2 nextpnr-xilinx bugs
-  (filed upstream).
+- **End-to-end open flow on real hardware (VC707):**
+  - 8-bit skew-tolerant counter blinks on VC707 with reset debounce.
+  - 200 MHz LVDS sysclk variant (`counter_bufr`) runs via IBUFDS + BUFR.
+  - `telegraph` UART smoke test prints `ABCDEFG` at 115200 baud on
+    `/dev/ttyUSB0`, bit-equivalent to the Vivado reference.
+  - **PicoSoC** (`picorv32/picosoc`) running on VC707 at 125 MHz from the
+    SGMIICLK crystal — BRAM-resident firmware prints
+    `PicoSoC alive on VC707 @ 125 MHz`, LEDs walk a pattern.
+- **All four reference designs at 0/0 bit-difference** vs Vivado, with **zero
+  `.frm` patches** — the bank-glue rules are now codified as DB entries plus
+  auto-inject in `utils/fasm2frames.py`.
 - **Cross-family segbits/ppips transplant** from the openXC7
   [`prjxray-db`](https://github.com/openXC7/prjxray-db) Kintex-7 tree into
   `database/virtex7/`: ~39 381 segbits + ~12 273 ppips entries, plus targeted
   key copies for `clk_hrow_*`, `clk_bufg_*`, `hclk_cmt*`, `io_int_interface_*`
   (≈51 k entries total). Pre-transplant tree backed up at
   `database/virtex7.before_transplant/`.
+- **HP-bank glue codified — 7 new segbits entries + auto-inject:**
+  - `LIOB18.IOB_Y0.IBUF_HP_BANK_GLUE` (1 bit)
+  - `LIOB18.IOB_Y0.OBUF_HP_BANK_GLUE` (3 bits)
+  - `LIOB18.IOB_Y1.OBUF_HP_BANK_GLUE` (3 bits)
+  - `RIOB18.IOB_Y0.IBUFDS_BANK_GLUE` (7 bits, LVDS pair root)
+  - `INT_L.IOB_COL_OBUF_CASCADE_Y1` (3 bits, Y1 OBUF column carry)
+  - `INT_L.IOB_COL_BANK_ACTIVE` (3 bits, bank-active marker)
+  - `INT_L.GFAN_TIE_ROOT_GLUE` (1 bit, OBUF T-tie GND routing)
+  - `HCLK_L.HCLK_LEAF_BUFRCLK3_ACTIVE` (1 bit, BUFR clock leaf)
+  - Plus 14 silicon-default bits added as IOB18 `default` entries (`PUDC_B`
+    cascade, DCI cascade, slew/drive defaults Vivado emits unconditionally).
+- **`utils/fasm2frames.py` bank-glue auto-inject** — direction-aware
+  walk over the FASM stream classifies each LIOB18 site as input / output /
+  diff-input from feature names (`IN_ONLY`, `.IN`, `IBUFDISABLE` → in;
+  `.DRIVE.` → out; `IN_DIFF` → diff_in) and injects the matching glue
+  features before frame assembly. `PUDC_B` template emission rewritten for
+  HP-bank IOSTANDARDs (10 features cover Y0 + Y1 default state). The
+  `pudc_b_tile_site` is resolved unconditionally so the HP-bank walk skips it.
 - **11 fuzzers patched** for HP-bank / virtex7-grid awareness:
   - `037-iob18-pips` — left-side mirror sites (LIOI / LIOI_TBYTESRC /
     LIOI_TBYTETERM), `top.py` NOT_INCLUDED_TILES for `*_SING`, generate-side
@@ -281,44 +318,117 @@ open-source bit→DCP / fasm→bit round-trip on a Virtex-7 HP-only part.
 - **`utils/mergedb.sh` extended** with LIOI / LIOI_TBYTESRC / LIOI_TBYTETERM
   / LIOB18 / mask_liob18 cases.
 - **RapidWright `json2dcp.jar` rebuilt** against modern RapidWright (2025.2.1)
-  and patched for virtex7 — at `~/rapidwright/build/rapidwright_json2dcp.jar`
-  (17 KB). Verified `rst_to_led_routed.json` → 1.38 MB DCP that loads back
-  cleanly on `xc7vx485tffg1761-2`. Patch list in
-  `~/rapidwright/build/README.md`.
+  and patched for virtex7 — verified `rst_to_led_routed.json` → 1.38 MB DCP
+  that loads back cleanly on `xc7vx485tffg1761-2`.
+- **nextpnr-xilinx companion patches** (on its `virtex7-support` branch):
+  - `xilinx/pack_dram.cc` — RAM128X1S / RAM256X1S single-port distributed RAM
+    packing (mirrors the SPO half of the dual-port families); needed by
+    PicoSoC's BRAM-fallback synthesis.
+  - `xilinx/python/nextpnr_structs.py` — bridges `PSEUDO_GND_WIRE_ROW` /
+    `PSEUDO_VCC_WIRE_ROW` to the INT tile's `GND_WIRE` / `VCC_WIRE` via
+    `CONST_DRIVER` pseudo-pips, so the router can find a route for OBUF
+    T-tie nets to the global GND.
 
-### Goals
+### Virtex-7 architecture discoveries
 
-- Document `xc7vx485tffg1761-2` bitstream format with parity sufficient for a
-  Vivado-equivalent bitstream on IOB-only designs first, then SLICE and CMT.
-- Achieve bit ↔ bit equivalence with Vivado on the `rst_to_led` pass-through
-  reference, then incrementally on counter, BUFR/IDELAY, and CMT designs.
-- Provide a runnable bit→DCP path so open-flow bitstreams can be inspected /
-  diffed against Vivado checkpoints (Phase A via `json2dcp.jar` done; Phase B
-  via a virtex7-aware `fasm2bels` still in progress).
+These are the things that turned out to be **different on Virtex-7**, not
+inherited automatically by transplanting the Kintex-7 sub-flow. Some are
+silicon-level facts that prjxray was never set up to capture; others are
+nextpnr-xilinx assumptions that broke at scale.
 
-### Work in Progress
+- **HP-bank ≠ HR-bank silicon.** Virtex-7 `xc7vx485t` is HP-bank-only
+  (`IOB18` family using `INBUF_DCIEN` / `OUTBUF_DCIEN`), whereas Kintex-7
+  parts on the openXC7 path are mostly HR (`IOB33` family using
+  `IBUF` / `OBUF`). The HR and HP IO logic share the same prjxray feature
+  syntax but **encode different silicon bits**, and the surrounding clock
+  region differs:
+  - HR uses `HCLK_IOI3_*` tiles.
+  - HP uses `HCLK_IOI_*` tiles.
+  - The IO-related fasm tools were hard-coded to `HCLK_IOI3_*` and silently
+    dropped HP-bank features until probed; `fasm2frames.py` and several
+    fuzzers now branch on a runtime grid probe.
+- **L/R-side mirror.** The VC707 IO column lives on the **left** side
+  (`LIOB18_X81*` / `LIOI_X*`) — most Kintex-7 reference designs used the
+  right-side mirror. The 037-iob18-pips fuzzer had to learn left-side
+  emission (it had only ever exercised RIOB18).
+- **"Bank glue" — the silicon enables Vivado sets that no prjxray feature
+  emits.** A correct prjxray-driven bitstream for an HP-bank design is a
+  proper *subset* of what Vivado emits because Vivado writes ~14 extra bits
+  per bank-in-use that the prjxray feature schema never claimed. These are
+  not user-visible (no fasm feature corresponds to them) but the HP-bank
+  IOB silicon **will not drive** without them. Categories:
+  - **Tile-in-use markers** in `INT_L_X62Y*` and `INT_L_X32Y49` — three bits
+    that indicate "this bank's OBUF column is live" / "DCI cascade is live".
+  - **Y0 vs Y1 OBUF cascade** — `LIOB18.IOB_Y0.OBUF_HP_BANK_GLUE` and
+    `.IOB_Y1.OBUF_HP_BANK_GLUE` are independent 3-bit groups. Crucially the
+    Y1 column's 3 bits also have to be cascaded into the next INT_L row up
+    (`INT_L.IOB_COL_OBUF_CASCADE_Y1`).
+  - **`PUDC_B` cascade.** The HP-bank `PUDC_B` pin (`LIOB18_X81Y97` on
+    `xc7vx485tffg1761-2`) controls bank-wide auto-pullup behaviour at boot
+    and **always** appears in the bitstream with 10 silicon-default features,
+    even when the user never references it. We now emit those features
+    unconditionally from `fasm2frames.py`.
+  - **IBUFDS pair root.** A differential IBUFDS uses the Master IOB
+    (`Y0`) as the live pin and emits 7 silicon-enable bits there
+    (`RIOB18.IOB_Y0.IBUFDS_BANK_GLUE`). The Slave (`Y1`) stays in default
+    state. Without these the LVDS receiver does not enable.
+  - Heuristic gotcha: our first cut classified OBUFs by `.SLEW.`; that gave
+    false positives because Vivado emits `SLEW.SLOW` on default-state IBUFs
+    too. The reliable OBUF marker is `.DRIVE.`.
+- **`HCLK_L.HCLK_LEAF_BUFRCLK3_ACTIVE`** — a one-bit "this BUFR leaf is
+  live" marker that Vivado sets when a BUFR is the source for a clock
+  region. Required for the `counter_bufr` 200 MHz LVDS clocking path; we
+  inject it whenever the FASM stream mentions any BUFR feature.
+- **`INT_L.GFAN_TIE_ROOT_GLUE`** — OBUF `T` (tristate) input must be tied
+  to GND for non-tristate use. Vivado routes that GND from the **next
+  INT_L row up** via the `GFAN0.GND_WIRE` pseudo-pip; the routing-graph
+  signature requires one extra bit at `26_018` in `INT_L_X62Y(N+10)`. We
+  detect any `INT_L_X62Y*.GFAN0.GND_WIRE` in the FASM and inject the
+  root-row glue automatically. This is the last residual that brought all
+  four reference designs to 0/0 vs Vivado on raw open flow.
+- **`fasm2bels` chokes on `NOCLKINV`** — the `xc7vx485t` connection
+  database builds (14 min, 4.2 GB, 56.8 M wires), but `clb_models.py` does
+  not yet handle the `NOCLKINV` packer feature that nextpnr-xilinx emits
+  for HP-bank SLICEs. Asserted as `{NOCLKINV}`. Phase B (`fasm2bels`
+  virtex7 port) is paused on this.
+- **nextpnr-xilinx OBUF T-tie convergence.** Within nextpnr the router
+  cannot find a path from `NULL_X0Y364/PSEUDO_GND_WIRE_GLBL` to the LIOB18
+  OBUF `TRI` pin because the constant-net source lives outside the INT
+  tile graph. Fixed at chipdb-build time by `nextpnr_structs.py`:
+  emit `CONST_DRIVER` pseudo-pips that bridge `PSEUDO_GND_WIRE_ROW` /
+  `PSEUDO_VCC_WIRE_ROW` into each INT tile's `GND_WIRE` / `VCC_WIRE`.
+- **nextpnr-xilinx Y137/Y138 chipdb wire mapping** — still open. Two LIOB18
+  rows present in the chipdb point at wires that the architecture
+  assignment then loses track of. Functional impact zero (our
+  `fasm2frames.py` covers the silicon-enable side); but the bug is real and
+  filed at task #31.
+- **PicoSoC needed RAM128X1S / RAM256X1S packing.** PicoSoC's
+  default `picorv32_pcpi_div` synthesises into single-port distributed RAM.
+  nextpnr-xilinx had packers only for the dual-port `RAM128X1D` /
+  `RAM256X1D` variants; the SP packers are mirrors of the SPO half of
+  those, added on this branch.
 
-- **030-iob18 N=200 rerun** for finer IOSTANDARD/DRIVE coverage on LIOB18.
-  Running at one specimen per ~3 min, currently ≈187 of 200 specimens written;
-  will trigger `make pushdb` automatically on completion.
-- **LIOB18 IOSTANDARD bit-encoding bug** — `rst_to_led.bit` produced by our
-  flow flickers and is unresponsive on hardware; Vivado-built reference works.
-  Targeted bit-diff localised the discrepancy to LIOI and LIOI_TBYTETERM
-  tiles sharing a frame range but with different word offsets — partial fix
-  applied (per-tile partitioning) reduced missing bits 28 → 21 and extras
-  14 → 12, but IOSTANDARD bits still wrong. Awaiting N=200 segdata to
-  re-derive.
-- **037-iob18-pips left-side coverage** — residual pip-convergence iteration;
-  iter 1 was salvaged after a JVM crash on `spec_008` left 19 surviving
-  specimens that yielded 128 LIOI entries.
-- **Phase B — virtex7 `fasm2bels` port** — parked. Connection database for
-  `xc7vx485tffg1761-2` builds successfully (14 min, 4.2 GB on disk, 56.8 M
-  wires). First failure is in `clb_models.py` on the nextpnr-emitted
-  PSEUDO_VCC packer cell (`assert False, {'NOCLKINV'}`). IOB18 / HP-bank BEL
-  name substitutions drafted in `models/iob_models.py` (uncommitted).
-- **Open TODOs (cross-cutting)** — expand the virtex7 ROI; add a Vivado DRC
-  cross-check of nextpnr output; exclude `GTX_INT_INTERFACE` pips from the
-  virtex7 chipdb; add bits info for `CFG_CENTER` / `*_SING` tiles.
+### Goals (remaining)
+
+- **Codify the 228-bit PicoSoC CLB-glue family** (relative offsets
+  `30_006 / 30_011 / 30_020 / 30_022 / 30_040 / 30_045 / 30_052 / 30_056`
+  + `31_040 / 31_043`) — per-SLICE "in use" bits that show up only when a
+  SLICE is occupied. Would push PicoSoC's bit-diff vs Vivado to zero.
+- **Restore the 236 missing IOI features** (IDELAY / OSERDES / OQ) into
+  `segbits_lioi.db` — currently we have HR-side coverage transplanted but
+  the HP-side variants need their own segdata.
+- **`fasm2bels` virtex7 port** — past the `NOCLKINV` block, then through
+  HP-bank IOB BEL substitutions (sketched in `models/iob_models.py`).
+- **Y137/Y138 chipdb wire mapping** in nextpnr-xilinx — for parity with
+  Vivado's checkpoint format.
+
+### Cross-cutting open TODOs
+
+- Expand the virtex7 ROI (small ROI was sufficient for the IO / HCLK
+  fuzzers but the CMT / DSP / GTX fuzzers will want more).
+- Vivado DRC cross-check of nextpnr output.
+- Exclude `GTX_INT_INTERFACE` pips from the virtex7 chipdb.
+- Bits info for `CFG_CENTER` / `*_SING` tiles.
 
 ### Constraints
 
