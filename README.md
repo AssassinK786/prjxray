@@ -9,6 +9,12 @@ Documenting the Xilinx 7-series bit-stream format.
 This repository contains both tools and scripts which allow you to document the
 bit-stream format of Xilinx 7-series FPGAs.
 
+> **Virtex-7 / VC707 users:** see [**Virtex-7 Port
+> Status**](#virtex-7-port-status-virtex7-support-branch) below for the
+> `virtex7-support` branch — different Vivado version, working open flow
+> on `xc7vx485tffg1761-2`, and device-specific patches. The Quickstart
+> Guide that follows assumes the upstream Artix-7 / 2017.2 path.
+
 More documentation can be found published on [prjxray ReadTheDocs site](https://prjxray.readthedocs.io/en/latest/) - this includes;
  * [Highlevel Bitstream Architecture](https://prjxray.readthedocs.io/en/latest/architecture/overview.html)
  * [Overview of DB Development Process](https://prjxray.readthedocs.io/en/latest/db_dev_process/index.html)
