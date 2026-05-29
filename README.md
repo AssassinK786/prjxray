@@ -242,6 +242,92 @@ We have also started experimenting with the Kintex-7 and Virtex-7 parts.
 The aim is to eventually document all parts in the Xilinx 7-series FPGAs but we
 can not do this alone, **we need your help**!
 
+## Virtex-7 Port Status (`virtex7-support` branch)
+
+This branch ports the openXC7 prjxray flow to **Virtex-7 `xc7vx485tffg1761-2`**
+(VC707 board), modelled on the Kintex-7 sub-flow. The goal is a fully
+open-source bit→DCP / fasm→bit round-trip on a Virtex-7 HP-only part.
+
+### Achievements
+
+- **End-to-end smoke test passes** on `xc7vx485tffg1761-2`: System-Verilog
+  → Yosys → nextpnr-xilinx → FASM → `fasm2frames.py` → `xc7frames2bit`
+  → `.bit`. First run required 3 patches and surfaced 2 nextpnr-xilinx bugs
+  (filed upstream).
+- **Cross-family segbits/ppips transplant** from the openXC7
+  [`prjxray-db`](https://github.com/openXC7/prjxray-db) Kintex-7 tree into
+  `database/virtex7/`: ~39 381 segbits + ~12 273 ppips entries, plus targeted
+  key copies for `clk_hrow_*`, `clk_bufg_*`, `hclk_cmt*`, `io_int_interface_*`
+  (≈51 k entries total). Pre-transplant tree backed up at
+  `database/virtex7.before_transplant/`.
+- **11 fuzzers patched** for HP-bank / virtex7-grid awareness:
+  - `037-iob18-pips` — left-side mirror sites (LIOI / LIOI_TBYTESRC /
+    LIOI_TBYTETERM), `top.py` NOT_INCLUDED_TILES for `*_SING`, generate-side
+    tile-type normalization, `ioi_pip_list.tcl` LIOI emission.
+  - `039-hclk-config` — virtex7 split (HCLK_IOI vs HCLK_IOI3),
+    `XRAY_IOSTANDARD` env var, IOB18M / IOB33M alternation in `top.py`.
+  - `047a-hclk-idelayctrl-pips` — accepts both HCLK_IOI and HCLK_IOI3.
+  - `034 / 034b / 041 / 043 / 044 / 045 / 046` — removed local
+    `write_pip_txtdata` overrides that shadowed the patched `utils.tcl`
+    bulk-fetch (~4× faster per specimen on xc7vx485t).
+- **`utils/utils.tcl` bulk-fetch patch** for `write_pip_txtdata` —
+  per-net `foreach pip` → bulk `get_pips` + bulk `get_property IS_DIRECTIONAL`
+  + cached `dst_wire_to_num_pips`. ~4× speed-up; on
+  `xc7vx485tffg1761-2` cuts `041-clk-hrow-pips`/`045-hclk-cmt-pips` specimens
+  from ~1.5 h to ~25 min each.
+- **`utils/fasm2frames.py` HP-bank fix** — was hard-coded to `HCLK_IOI3_*`
+  tile prefix; now probes the grid for whichever of `HCLK_IOI_` / `HCLK_IOI3_`
+  exists. STEPDOWN bank-anchor check widened accordingly.
+- **`utils/mergedb.sh` extended** with LIOI / LIOI_TBYTESRC / LIOI_TBYTETERM
+  / LIOB18 / mask_liob18 cases.
+- **RapidWright `json2dcp.jar` rebuilt** against modern RapidWright (2025.2.1)
+  and patched for virtex7 — at `~/rapidwright/build/rapidwright_json2dcp.jar`
+  (17 KB). Verified `rst_to_led_routed.json` → 1.38 MB DCP that loads back
+  cleanly on `xc7vx485tffg1761-2`. Patch list in
+  `~/rapidwright/build/README.md`.
+
+### Goals
+
+- Document `xc7vx485tffg1761-2` bitstream format with parity sufficient for a
+  Vivado-equivalent bitstream on IOB-only designs first, then SLICE and CMT.
+- Achieve bit ↔ bit equivalence with Vivado on the `rst_to_led` pass-through
+  reference, then incrementally on counter, BUFR/IDELAY, and CMT designs.
+- Provide a runnable bit→DCP path so open-flow bitstreams can be inspected /
+  diffed against Vivado checkpoints (Phase A via `json2dcp.jar` done; Phase B
+  via a virtex7-aware `fasm2bels` still in progress).
+
+### Work in Progress
+
+- **030-iob18 N=200 rerun** for finer IOSTANDARD/DRIVE coverage on LIOB18.
+  Running at one specimen per ~3 min, currently ≈187 of 200 specimens written;
+  will trigger `make pushdb` automatically on completion.
+- **LIOB18 IOSTANDARD bit-encoding bug** — `rst_to_led.bit` produced by our
+  flow flickers and is unresponsive on hardware; Vivado-built reference works.
+  Targeted bit-diff localised the discrepancy to LIOI and LIOI_TBYTETERM
+  tiles sharing a frame range but with different word offsets — partial fix
+  applied (per-tile partitioning) reduced missing bits 28 → 21 and extras
+  14 → 12, but IOSTANDARD bits still wrong. Awaiting N=200 segdata to
+  re-derive.
+- **037-iob18-pips left-side coverage** — residual pip-convergence iteration;
+  iter 1 was salvaged after a JVM crash on `spec_008` left 19 surviving
+  specimens that yielded 128 LIOI entries.
+- **Phase B — virtex7 `fasm2bels` port** — parked. Connection database for
+  `xc7vx485tffg1761-2` builds successfully (14 min, 4.2 GB on disk, 56.8 M
+  wires). First failure is in `clb_models.py` on the nextpnr-emitted
+  PSEUDO_VCC packer cell (`assert False, {'NOCLKINV'}`). IOB18 / HP-bank BEL
+  name substitutions drafted in `models/iob_models.py` (uncommitted).
+- **Open TODOs (cross-cutting)** — expand the virtex7 ROI; add a Vivado DRC
+  cross-check of nextpnr output; exclude `GTX_INT_INTERFACE` pips from the
+  virtex7 chipdb; add bits info for `CFG_CENTER` / `*_SING` tiles.
+
+### Constraints
+
+- Patches must **not** regress other families (artix7 / kintex7 / zynq7 /
+  spartan7). The HP-bank additions are gated on tile-type prefix so the
+  HR-bank paths stay byte-identical.
+- Build artefacts under `fuzzers/*/build/` are **retained** for debugging
+  — `make clean` is not invoked between fuzzer iterations.
+
 ## Adding a new part to an existing family
 
 We have written a [detailed guide](https://f4pga.readthedocs.io/projects/prjxray/en/latest/db_dev_process/newpart.html) that walks through the process of adding a new part to an existing family.

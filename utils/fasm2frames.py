@@ -141,18 +141,33 @@ def run(
         with OpenSafeFile(os.path.join(db_root, part, "part.json"), "r") as fp:
             part_data = json.load(fp)
 
+        # The IO-bank "anchor" tile prefix differs per family. kintex7/artix7
+        # use HR-bank IOLOGIC and therefore HCLK_IOI3. virtex7 HP-only parts
+        # (e.g. xc7vx485tffg1761-2) use HCLK_IOI. Probe the grid for whichever
+        # one actually exists; if neither, skip this bank-anchor altogether
+        # rather than queueing a KeyError for downstream lookups.
         for bank, loc in part_data["iobanks"].items():
-            tile = "HCLK_IOI3_" + loc
-            bank_to_tile[bank].add(tile)
-            tile_to_bank[tile] = bank
+            for prefix in ("HCLK_IOI3_", "HCLK_IOI_"):
+                tile = prefix + loc
+                try:
+                    db.grid().gridinfo_at_tilename(tile)
+                except KeyError:
+                    continue
+                bank_to_tile[bank].add(tile)
+                tile_to_bank[tile] = bank
+                break
 
         for pin in package_pins:
             bank_to_tile[pin["bank"]].add(pin["tile"])
             tile_to_bank[pin["tile"]] = pin["bank"]
 
+    # Resolve PUDC_B site unconditionally — we need the tile name later in the
+    # HP-bank glue walk to skip it (Vivado does not set IBUF_HP_BANK_GLUE on
+    # the PUDC_B tile even though our heuristic would).
+    pudc_b_tile_site = find_pudc_b(db) if part is not None else None
+
     if emit_pudc_b_pullup:
         pudc_b_in_use = False
-        pudc_b_tile_site = find_pudc_b(db)
 
         def check_for_pudc_b(set_feature):
             feature_callback(set_feature)
@@ -191,19 +206,53 @@ def run(
     if emit_pudc_b_pullup and not pudc_b_in_use and pudc_b_tile_site is not None:
         # Enable IN-only and PULLUP on PUDC_B IOB.
         #
-        # TODO: The following FASM string only works on Artix 50T and Zynq 10
-        # fabrics.  It is known to be wrong for the K70T fabric, but it is
-        # unclear how to know which IOSTANDARD to use.
+        # The set of IOSTANDARD aliases differs per family because HR-bank
+        # (IOB33) silicon supports more standards than HP-bank (IOB18).
+        # Pick the right alias by sniffing the tile name; the chosen alias
+        # has to match a segbits entry exactly or fasm2frames will error.
         missing_features = []
-        for line in fasm.parse_fasm_string("""
+        is_hp = pudc_b_tile_site[0].startswith('LIOB18') or \
+                pudc_b_tile_site[0].startswith('RIOB18')
+        if is_hp:
+            # HP-bank (virtex7 xc7vx485tffg1761-2) — Vivado emits this exact
+            # feature set on the PUDC_B IOB; the bits flow from segbits
+            # entries on LVCMOS12_LVCMOS15.IN, LVCMOS12_LVCMOS15_LVCMOS18.IN,
+            # the long IN_ONLY alias, two SLEW.SLOW aliases, the STEPDOWN
+            # alias, PULLTYPE.PULLUP on Y0, and Y1's default-state SLEW/
+            # STEPDOWN/PULLDOWN trio. Cross-referenced with a Vivado-built
+            # rst_to_led reference bitstream.
+            pudc_template = (
+                "{tile}.{site}.LVCMOS12_LVCMOS15.IN\n"
+                "{tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18.IN\n"
+                "{tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18_LVCMOS25_LVCMOS33_LVDS_25_LVTTL_SSTL135_SSTL15_TMDS_33.IN_ONLY\n"
+                "{tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18_LVCMOS25_LVCMOS33_LVTTL_SSTL135_SSTL15.SLEW.SLOW\n"
+                "{tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18.SLEW.SLOW\n"
+                "{tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18_SSTL135_SSTL15.STEPDOWN\n"
+                "{tile}.{site}.PULLTYPE.PULLUP\n"
+                "{tile}.{partner}.LVCMOS12_LVCMOS15_LVCMOS18.SLEW.SLOW\n"
+                "{tile}.{partner}.LVCMOS12_LVCMOS15_LVCMOS18_SSTL135_SSTL15.STEPDOWN\n"
+                "{tile}.{partner}.PULLTYPE.PULLDOWN\n"
+            )
+            partner = 'IOB_Y1' if pudc_b_tile_site[1] == 'IOB_Y0' else 'IOB_Y0'
+            for line in fasm.parse_fasm_string(pudc_template.format(
+                    tile=pudc_b_tile_site[0],
+                    site=pudc_b_tile_site[1],
+                    partner=partner)):
+                assembler.add_fasm_line(line, missing_features)
+        else:
+            # HR-bank (artix7/kintex7-HR/zynq7/spartan7) — original 3-line
+            # template kept intact. TODO from the original code still
+            # applies to K70T: it is known to be wrong but we have no
+            # better data here.
+            for line in fasm.parse_fasm_string("""
 {tile}.{site}.LVCMOS12_LVCMOS15_LVCMOS18_LVCMOS25_LVCMOS33_LVTTL_SSTL135_SSTL15.IN_ONLY
 {tile}.{site}.LVCMOS25_LVCMOS33_LVTTL.IN
 {tile}.{site}.PULLTYPE.PULLUP
 """.format(
-                tile=pudc_b_tile_site[0],
-                site=pudc_b_tile_site[1],
-        )):
-            assembler.add_fasm_line(line, missing_features)
+                    tile=pudc_b_tile_site[0],
+                    site=pudc_b_tile_site[1],
+            )):
+                assembler.add_fasm_line(line, missing_features)
 
         if missing_features:
             raise fasm_assembler.FasmLookupError('\n'.join(missing_features))
@@ -256,15 +305,174 @@ def run(
                             for line in fasm.parse_fasm_string(feature):
                                 assembler.add_fasm_line(line, missing_features)
 
-                # This is a HCLK_IOI3 tile, set the stepdown feature for it
-                # too.
-                if "HCLK_IOI3" in tile:
+                # On HR-bank parts the bank-anchor tile is HCLK_IOI3 and gets a
+                # STEPDOWN feature; on virtex7 HP-only it is HCLK_IOI which has
+                # the same STEPDOWN feature in our segbits.
+                if "HCLK_IOI3" in tile or tile.startswith("HCLK_IOI_"):
                     feature = "{}.STEPDOWN".format(tile)
                     for line in fasm.parse_fasm_string(feature):
                         assembler.add_fasm_line(line, missing_features)
 
         if missing_features:
             raise fasm_assembler.FasmLookupError('\n'.join(missing_features))
+
+        # HP-bank (LIOB18/RIOB18) "bank-glue" auto-injection.
+        # The HP-class output buffer (OUTBUF_DCIEN) needs three driver-enable
+        # bits, and the HP-class input buffer (INBUF_DCIEN) needs one input-
+        # enable bit. Vivado emits these implicitly for every used HP-bank
+        # IOB; on HR-bank IOB33 the equivalent bits are factory-default so
+        # were never captured in upstream prjxray. For round-trip parity on
+        # virtex7 xc7vx485tffg1761-2 (HP-only) we inject the right tag
+        # whenever any IOB feature is set on an HP-bank tile, mirroring the
+        # STEPDOWN walk above.
+        glue_missing = []
+        liob_in_features = defaultdict(lambda: {'in': False, 'out': False, 'diff_in': False})
+        for set_feature in set_features:
+            if set_feature.value == 0:
+                continue
+            feature = set_feature.feature
+            parts = feature.split(".")
+            if len(parts) < 3:
+                continue
+            tile = parts[0]
+            site = parts[1]
+            tag  = ".".join(parts[2:])
+            if not (tile.startswith("LIOB18") or tile.startswith("RIOB18")):
+                continue
+            if site not in ("IOB_Y0", "IOB_Y1"):
+                continue
+            # Direction heuristic. Pure ".IN" / ".IN_ONLY" indicates IBUF.
+            # ".DRIVE." is the only reliable OBUF marker — output drive
+            # strength is meaningless for inputs. ".SLEW." and ".OUT" appear
+            # on IBUF tiles too as bank-wide defaults (Vivado emits
+            # SLEW.SLOW on every unused IOB), so they would mis-classify
+            # IBUFs as IOBUFs and inject spurious OBUF_HP_BANK_GLUE bits.
+            # ".IN_DIFF" indicates an IBUFDS (LVDS differential input).
+            if "IN_DIFF" in tag:
+                liob_in_features[(tile, site)]['diff_in'] = True
+            elif "IN_ONLY" in tag or tag.endswith(".IN") or "IBUFDISABLE" in tag:
+                liob_in_features[(tile, site)]['in'] = True
+            if ".DRIVE." in tag:
+                liob_in_features[(tile, site)]['out'] = True
+
+        # Track whether the col-32 LIOB18 column has any Y1 OBUFs anywhere.
+        # When it does, Vivado lights a 6-bit "DCI cascade + bank active"
+        # pattern in INT_L_X32Y49 — the bottom-most INT_L tile of the X32
+        # routing spine that serves the LIOB18 column. The same indicator
+        # exists for the X110 (R-side IOB) column too, mirrored at
+        # INT_R_X110Y49 — we'd add that when the first RIOB18 test design
+        # asks for it.
+        any_liob18_y1_obuf = False
+        # PUDC_B's tile already gets its own IN/IN_ONLY/PULLUP/SLEW features
+        # injected above; do NOT also fire the IBUF_HP_BANK_GLUE rule on it.
+        # Empirically (Vivado-built rst_to_led ref) the PUDC_B tile does not
+        # carry the bank-glue bit because the pullup is a "virtual" tie,
+        # not a real IBUF placement.
+        pudc_b_tile_name = pudc_b_tile_site[0] if pudc_b_tile_site else None
+        for (tile, site), kind in liob_in_features.items():
+            if tile == pudc_b_tile_name:
+                continue
+            # Both IOB_Y0 (master) and IOB_Y1 (slave) sites have HP_BANK_GLUE
+            # patterns now. The Y1 OBUF rule was derived from the counter
+            # design (LIOB18 tiles with two driving OBUFs) — Vivado emits an
+            # extra 3 bits at rel 30_041 / 32_016 / 33_061 when Y1 has a
+            # ".DRIVE." feature in addition to Y0.
+            if kind['in']:
+                feature = "{}.{}.IBUF_HP_BANK_GLUE".format(tile, site)
+                for line in fasm.parse_fasm_string(feature):
+                    assembler.add_fasm_line(line, glue_missing)
+            if kind['out']:
+                feature = "{}.{}.OBUF_HP_BANK_GLUE".format(tile, site)
+                for line in fasm.parse_fasm_string(feature):
+                    assembler.add_fasm_line(line, glue_missing)
+            if kind['diff_in']:
+                # IBUFDS — empirically Vivado lights a 7-bit pattern in the
+                # IOB_Y0 (M-site) slot of the differential pair. Y1 is the
+                # negative-half slave and reuses the silicon defaults, so
+                # no separate Y1 rule is needed.
+                feature = "{}.IOB_Y0.IBUFDS_BANK_GLUE".format(tile)
+                for line in fasm.parse_fasm_string(feature):
+                    assembler.add_fasm_line(line, glue_missing)
+            if kind['out'] and site == 'IOB_Y1' and tile.startswith('LIOB18_X81'):
+                any_liob18_y1_obuf = True
+
+        if any_liob18_y1_obuf:
+            for tag in ('INT_L_X32Y49.IOB_COL_OBUF_CASCADE_Y1',
+                        'INT_L_X32Y49.IOB_COL_BANK_ACTIVE'):
+                for line in fasm.parse_fasm_string(tag):
+                    assembler.add_fasm_line(line, glue_missing)
+
+        # GFAN0 T-tie root glue. When the design has an OBUF whose T
+        # input must be tied to GND through general routing (e.g. an
+        # IBUF→OBUF passthrough where no SLICE FF Q drives the OBUF),
+        # Vivado emits INT_L_X62Y73.GFAN0.GND_WIRE / .IMUX_L33.GFAN0
+        # FASM features AND lights one extra silicon bit at
+        # INT_L_X62Y83 minor 26 bit 18 — the "this GFAN tie route is
+        # in use" marker for the col-62 routing spine. Only the c=62
+        # column has been observed needing this glue (the counter
+        # designs use FF-driven OBUFs and route GFAN0 through other
+        # columns without triggering an analogous bit). The rule fires
+        # only when an X62-column GFAN0.GND_WIRE feature appears.
+        x62_gfan_tile = None
+        for set_feature in set_features:
+            if set_feature.value == 0:
+                continue
+            feat = set_feature.feature
+            if not feat.startswith('INT_L_X62'):
+                continue
+            if 'GFAN0.GND_WIRE' in feat:
+                # The mirror tile (Y+10) gets the glue bit. For
+                # INT_L_X62Y73 → INT_L_X62Y83.
+                tile = feat.split('.')[0]
+                import re as _re
+                m = _re.match(r'(INT_L_X(\d+))Y(\d+)', tile)
+                if m:
+                    x62_gfan_tile = 'INT_L_X{}Y{}'.format(m.group(2), int(m.group(3)) + 10)
+                break
+
+        if x62_gfan_tile:
+            feature = '{}.GFAN_TIE_ROOT_GLUE'.format(x62_gfan_tile)
+            for line in fasm.parse_fasm_string(feature):
+                assembler.add_fasm_line(line, glue_missing)
+
+        # HCLK_L per-BUFRCLK-channel "active" markers. Empirically Vivado
+        # sets one extra bit per HCLK_L tile per BUFR channel in use, at
+        # minor 1 bit 28+ch. Only BUFRCLK3 is observed today (the
+        # counter_sw_bufr design); when a kintex7 → virtex7 comparison
+        # design that uses BUFRCLK0/1/2 is built we can add those analogues
+        # to segbits_hclk_l.db with bits 01_28 / 01_29 / 01_30 respectively.
+        hclkl_bufrclk_seen = {}  # (hclkl_tile) -> set of channel-ids in use
+        for set_feature in set_features:
+            if set_feature.value == 0:
+                continue
+            feat = set_feature.feature
+            parts = feat.split('.')
+            if len(parts) < 3:
+                continue
+            if not parts[0].startswith('HCLK_L'):
+                continue
+            # HCLK_L_X..Y...HCLK_LEAF_CLK_B_TOP/BOTL[0-5].HCLK_CK_BUFRCLK[0-3]
+            tag = '.'.join(parts[2:])
+            if 'HCLK_CK_BUFRCLK' not in tag:
+                continue
+            ch = tag.rsplit('HCLK_CK_BUFRCLK', 1)[1]
+            if ch.isdigit():
+                hclkl_bufrclk_seen.setdefault(parts[0], set()).add(int(ch))
+
+        for hclkl_tile, channels in hclkl_bufrclk_seen.items():
+            for ch in channels:
+                if ch != 3:
+                    # Only BUFRCLK3 has segbits data so far; skip rest
+                    # silently so the partial rule doesn't error.
+                    continue
+                feature = '{}.HCLK_LEAF_BUFRCLK{}_ACTIVE'.format(hclkl_tile, ch)
+                for line in fasm.parse_fasm_string(feature):
+                    assembler.add_fasm_line(line, glue_missing)
+
+        # glue_missing entries indicate the segbits don't carry the rule yet
+        # (e.g. partially-built database); fall through silently rather than
+        # erroring, so this auto-injection is a no-op on databases that
+        # haven't been bank-glue-annotated.
 
     frames = assembler.get_frames(sparse=sparse)
 
