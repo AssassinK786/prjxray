@@ -17,7 +17,7 @@ export XRAY_IOSTANDARD="LVCMOS18"
 # Virtex-7 synthesis only checks out a license under Vivado 2020.1 on this setup
 # (2017.2's license manager refuses xc7vx485t). Override the install path and the
 # version gate for this family. Both are overridable from the environment.
-export XRAY_VIVADO_SETTINGS="${XRAY_VIVADO_SETTINGS:-/NFS/apps/Xilinx/Vivado/2020.1/settings64.sh}"
+export XRAY_VIVADO_SETTINGS="${XRAY_VIVADO_SETTINGS:-/opt/Xilinx/Vivado/2020.1/settings64.sh}"
 export XRAY_VIVADO_VERSION="${XRAY_VIVADO_VERSION:-v2020.1.1}"
 
 # NOTE: The tilegrid/ROI coordinates below are device-specific (xc7vx485t) and
