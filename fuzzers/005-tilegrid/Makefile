@@ -72,6 +72,7 @@ endif
 ifeq (${HAS_HIGH_PERFORMANCE_BANKS}, 1)
 TILEGRID_TDB_DEPENDENCIES += iob18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += iob18_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb
+TILEGRID_TDB_DEPENDENCIES += iob18_sing/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += ioi18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 # GTX transceiver fuzzers. Kintex-7 only: the xc7vx485t-ffg1761 package used for
 # virtex7 bonds only ~7 of its 14 GTX quads, so the unbonded GTX_COMMON tiles
@@ -128,6 +129,9 @@ iob_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 
 iob18_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 	cd iob18_int && $(MAKE)
+
+iob18_sing/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
+	cd iob18_sing && $(MAKE)
 
 ioi/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 	cd ioi && $(MAKE)
@@ -233,6 +237,7 @@ clean:
 	cd iob18 && $(MAKE) clean
 	cd iob_int && $(MAKE) clean
 	cd iob18_int && $(MAKE) clean
+	cd iob18_sing && $(MAKE) clean
 	cd ioi && $(MAKE) clean
 	cd ioi18 && $(MAKE) clean
 	cd mmcm && $(MAKE) clean
@@ -270,6 +275,7 @@ clean_part:
 	cd iob18 && $(MAKE) clean_part
 	cd iob_int && $(MAKE) clean_part
 	cd iob18_int && $(MAKE) clean_part
+	cd iob18_sing && $(MAKE) clean_part
 	cd ioi && $(MAKE) clean_part
 	cd ioi18 && $(MAKE) clean_part
 	cd mmcm && $(MAKE) clean_part
