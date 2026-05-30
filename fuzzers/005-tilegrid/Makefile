@@ -72,7 +72,12 @@ endif
 ifeq (${HAS_HIGH_PERFORMANCE_BANKS}, 1)
 TILEGRID_TDB_DEPENDENCIES += iob18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += iob18_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb
-TILEGRID_TDB_DEPENDENCIES += iob18_sing/$(BUILD_FOLDER)/segbits_tilegrid.tdb
+# iob18_sing is intentionally NOT a tilegrid dependency: SING tiles inherit
+# their base address from the parent IOB18 column via propagate_IOB_SING in
+# generate_full.py, not via direct measurement. The iob18_sing rule below is
+# kept so the build can still be invoked manually as a Vivado-measurement
+# guard (its tdb half-aligns at offset+1 - exactly what propagate_IOB_SING's
+# top-tile alias models with offset=99).
 TILEGRID_TDB_DEPENDENCIES += ioi18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 # GTX transceiver fuzzers. Kintex-7 only: the xc7vx485t-ffg1761 package used for
 # virtex7 bonds only ~7 of its 14 GTX quads, so the unbonded GTX_COMMON tiles
