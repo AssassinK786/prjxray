@@ -166,6 +166,15 @@ case "$1" in
 	lioi_tbyteterm)
 		sed < "$2" > "$tmp1" -e 's/^IOI\./LIOI_TBYTETERM./' ;;
 
+	lioi_sing)
+		# 036-iob18-ologic-sing fuzzer emits LIOI_SING. / RIOI_SING.
+		# entries in one file; for the lioi_sing target keep only
+		# the LIOI_SING.* rows and pass them through verbatim.
+		grep '^LIOI_SING\.' "$2" > "$tmp1" || true ;;
+
+	rioi_sing)
+		grep '^RIOI_SING\.' "$2" > "$tmp1" || true ;;
+
 	cmt_top_r_upper_t)
 		sed < "$2" > "$tmp1" -e 's/^CMT_UPPER_T\./CMT_TOP_R_UPPER_T./' ;;
 
