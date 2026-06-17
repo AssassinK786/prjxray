@@ -13,7 +13,10 @@
 # nextpnr asks for OLOGIC features on SING-row LED IOBs (VC707
 # counter25 build hits this for led[?] @ LIOI_SING_X82Y51).
 
-N := 20
+# N=50: the sibling 036-iob18-ologic uses N=40 to resolve the OLOGIC_Y0
+# enum features (OMUX/OQUSED/OSERDES.DATA_RATE_TQ); SING needs at least as
+# many specimens or dbfixup drops them as unresolved/duplicate.
+N := 50
 include ../fuzzer.mk
 
 database: build/segbits_rioi_sing.db
