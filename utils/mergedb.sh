@@ -127,6 +127,12 @@ case "$1" in
 	liob18)
 		sed < "$2" > "$tmp1" -e 's/^IOB18\./LIOB18./' ;;
 
+	riob18_sing)
+		sed < "$2" > "$tmp1" -e 's/^IOB18\./RIOB18_SING./' ;;
+
+	liob18_sing)
+		sed < "$2" > "$tmp1" -e 's/^IOB18\./LIOB18_SING./' ;;
+
 	mask_liob18)
 		sed < "$2" > "$tmp1" -e 's/^IOB18\./LIOB18./' ;;
 
