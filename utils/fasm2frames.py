@@ -296,16 +296,16 @@ def main():
     parser.add_argument('fn_in', help='Input FPGA assembly (.fasm) file')
     parser.add_argument(
         'fn_out',
-        default='/dev/stdout',
+        default=None,
         nargs='?',
-        help='Output FPGA frame (.frm) file')
+        help='Output FPGA frame (.frm) file (default: stdout)')
 
     args = parser.parse_args()
     run(
         db_root=args.db_root,
         part=args.part,
         filename_in=args.fn_in,
-        f_out=open(args.fn_out, 'w'),
+        f_out=(open(args.fn_out, 'w') if args.fn_out else sys.stdout),
         sparse=args.sparse,
         roi=args.roi,
         debug=args.debug,
