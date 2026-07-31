@@ -9,16 +9,56 @@
  */
 #include <prjxray/memory_mapped_file.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 namespace prjxray {
 
 std::unique_ptr<MemoryMappedFile> MemoryMappedFile::InitWithFile(
     const std::string& path) {
+#ifdef _WIN32
+	HANDLE file = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+	                          NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+	                          NULL);
+	if (file == INVALID_HANDLE_VALUE)
+		return nullptr;
+
+	LARGE_INTEGER file_size;
+	if (!GetFileSizeEx(file, &file_size)) {
+		CloseHandle(file);
+		return nullptr;
+	}
+
+	// A zero-length file cannot be mapped; return an object (to indicate
+	// the file exists) with a nullptr and zero length.
+	if (file_size.QuadPart == 0) {
+		CloseHandle(file);
+		return std::unique_ptr<MemoryMappedFile>(
+		    new MemoryMappedFile(nullptr, 0));
+	}
+
+	HANDLE mapping =
+	    CreateFileMappingA(file, NULL, PAGE_READONLY, 0, 0, NULL);
+	// The view keeps the file/mapping alive, so the handles can be closed.
+	CloseHandle(file);
+	if (mapping == NULL)
+		return nullptr;
+
+	void* file_map = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+	CloseHandle(mapping);
+	if (file_map == NULL)
+		return nullptr;
+
+	return std::unique_ptr<MemoryMappedFile>(new MemoryMappedFile(
+	    file_map, static_cast<size_t>(file_size.QuadPart)));
+#else
 	int fd = open(path.c_str(), O_RDONLY, 0);
 	if (fd == -1)
 		return nullptr;
@@ -51,10 +91,16 @@ std::unique_ptr<MemoryMappedFile> MemoryMappedFile::InitWithFile(
 
 	return std::unique_ptr<MemoryMappedFile>(
 	    new MemoryMappedFile(file_map, statbuf.st_size));
+#endif
 }
 
 MemoryMappedFile::~MemoryMappedFile() {
+#ifdef _WIN32
+	if (data_)
+		UnmapViewOfFile(data_);
+#else
 	munmap(data_, size_);
+#endif
 }
 
 }  // namespace prjxray
