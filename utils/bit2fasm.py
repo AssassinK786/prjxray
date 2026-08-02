@@ -108,7 +108,12 @@ def main():
         if args.bits_file:
             bits_file = stack.enter_context(open(args.bits_file, 'wb'))
         else:
-            bits_file = stack.enter_context(tempfile.NamedTemporaryFile())
+            # On Windows an open NamedTemporaryFile cannot be re-opened by
+            # the bitread subprocess (sharing violation): create it closed
+            # and clean it up ourselves.
+            bits_file = tempfile.NamedTemporaryFile(delete=False)
+            bits_file.close()
+            stack.callback(os.unlink, bits_file.name)
 
         bit_to_bits(
             bitread=args.bitread,

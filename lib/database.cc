@@ -9,7 +9,11 @@
  */
 #include <prjxray/database.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <glob.h>
+#endif
 
 #include <memory>
 
@@ -23,6 +27,25 @@ std::vector<std::unique_ptr<prjxray::SegbitsFileReader>> Database::segbits()
     const {
 	std::vector<std::unique_ptr<prjxray::SegbitsFileReader>> segbits;
 
+#ifdef _WIN32
+	const std::string pattern =
+	    absl::StrCat(db_path_, "/", kSegbitsGlobPattern);
+	WIN32_FIND_DATAA find_data;
+	HANDLE handle = FindFirstFileA(pattern.c_str(), &find_data);
+	if (handle == INVALID_HANDLE_VALUE) {
+		return {};
+	}
+
+	do {
+		auto this_segbit = SegbitsFileReader::InitWithFile(
+		    absl::StrCat(db_path_, "/", find_data.cFileName));
+		if (this_segbit) {
+			segbits.emplace_back(std::move(this_segbit));
+		}
+	} while (FindNextFileA(handle, &find_data));
+
+	FindClose(handle);
+#else
 	glob_t segbits_glob_results;
 	int ret = glob(absl::StrCat(db_path_, "/", kSegbitsGlobPattern).c_str(),
 	               GLOB_NOSORT | GLOB_TILDE, NULL, &segbits_glob_results);
@@ -39,6 +62,7 @@ std::vector<std::unique_ptr<prjxray::SegbitsFileReader>> Database::segbits()
 	}
 
 	globfree(&segbits_glob_results);
+#endif
 
 	return segbits;
 }
