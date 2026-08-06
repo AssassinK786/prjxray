@@ -21,7 +21,7 @@ Vivado writes the bitstream.
 | prjxray (this repo) | https://github.com/openXC7/prjxray | `virtex7-support` branch |
 | nextpnr-xilinx | https://github.com/openXC7/nextpnr-xilinx | a branch with the patches from `xilinx/{fasm,pack_clocking_xc7,pack_io_xc7}.cc` listed below; develops out of the `atomic-carry4` tag |
 | RapidWright | https://github.com/Xilinx/RapidWright | `2025.2.1` standalone jar (`rapidwright-2025.2.1-standalone-lin64.jar`, ~95 MB) plus `gson-2.10.1.jar` |
-| json2dcp + WireOracle + BuildWireOracle | local glue, currently in `/home/jonathan/rapidwright/build/` | tracked in `tools/rapidwright_glue/` *(planned — see "Glue tree" below)* |
+| json2dcp + WireOracle + BuildWireOracle | local glue | tracked in `deps/json_drc-portable` (git submodule) |
 | Vivado | for `write_bitstream` and as source of device data | **2020.1** (others 2018+ may work) |
 | SystemVerilog Suite (SVS) | `~/System-Verilog-suite/_build/default/sv_suite.exe` | Verilog → EDIF → nextpnr JSON |
 | openFPGALoader | https://github.com/trabucayre/openFPGALoader | built locally; loads via Digilent JTAG |
@@ -102,21 +102,17 @@ metadata tree (`xilinx/xc7vx485t.bin`).
 
 ### 2. RapidWright + the glue jar
 
-Install RapidWright device data (extract `rapidwright_data.zip` and
-`rapidwright_data2.zip` into `~/.local/share/RapidWright/data/`).  Then
-build the glue:
+The glue lives in `deps/json_drc-portable` and its Makefile fetches
+everything it needs — the RapidWright standalone jar, gson, and the
+device data for the one part:
 
 ```bash
-cd ~/rapidwright/build
-./build.sh        # compiles WireOracle.java + json2dcp.java -> rapidwright_json2dcp.jar
+make -C deps/json_drc-portable        # fetch + build all tool jars
+make -C deps/json_drc-portable verify # prove the result actually runs
 ```
 
-`build.sh` expects:
-
-```
-~/rapidwright/rapidwright-2025.2.1-standalone-lin64.jar
-~/rapidwright/jars/jars/gson-2.10.1.jar
-```
+Note it does NOT download `rapidwright_data.zip` (2.0 GB); it asks
+RapidWright for the single part instead, which is about 3.6 MB.
 
 ### 3. Wire-name oracle (one-shot per part)
 
@@ -125,13 +121,11 @@ routethru, and site→tile questions that json2dcp consults at routing-
 import time.  Build it once for `xc7vx485tffg1761-2`:
 
 ```bash
-mkdir -p ~/min_ibufds_ff_led/oracle
-java -Xmx16g \
-    -cp ~/rapidwright/build/oracle_classes:~/rapidwright/rapidwright-2025.2.1-standalone-lin64.jar \
-    dev.fpga.rapidwright.BuildWireOracle \
-    xc7vx485tffg1761-2 \
-    ~/min_ibufds_ff_led/oracle/xc7vx485tffg1761-2.oracle.txt.gz
+make -C deps/json_drc-portable oracle/xc7vx485tffg1761-2.oracle.txt.gz
 ```
+
+(`make deps` builds it too; the rule runs `BuildWireOracle` against the
+device database and is slow, so it is cached in `oracle/`.)
 
 Cost: ~1.5 s wall, ~2.5 MB gzipped output.  json2dcp auto-discovers
 the file by walking up from the JSON's directory looking for an
@@ -153,10 +147,9 @@ cd ~/min_ibufds_ff_led
 ~/System-Verilog-suite/_build/default/sv_suite.exe script nextpnr_pass/build.lua
 
 # 3) json2dcp: top_routed.json -> top_rw.dcp
-java -jar ~/rapidwright/build/rapidwright_json2dcp.jar \
-    xc7vx485tffg1761-2 \
-    nextpnr_pass/top_routed.json \
-    nextpnr_pass/top_rw.dcp
+ethsoc/routedjson2dcp.sh nextpnr_pass/top_routed.json nextpnr_pass/top_rw.dcp
+# (wraps rapidwright_json2dcp.jar, sets RAPIDWRIGHT_PATH + XRAY_WIRE_ORACLE,
+#  and preprocesses the nextpnr JSON for json2dcp's strictness)
 ```
 
 `build.lua` is the SVS script that drives the Verilog→EDIF→JSON→nextpnr
@@ -307,8 +300,10 @@ Three pieces of glue, layered:
 
 ## Glue tree
 
-The json2dcp / WireOracle / BuildWireOracle sources are currently in
-`/home/jonathan/rapidwright/build/`:
+The json2dcp / WireOracle / BuildWireOracle sources are tracked in
+`deps/json_drc-portable/src/` (submodule, github.com/jrrk2/json_drc-portable),
+together with dcp2fasm, the opendcp XML tools, and a Makefile that fetches
+the upstream jars and device data:
 
 ```
 build/
