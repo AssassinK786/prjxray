@@ -319,11 +319,18 @@ int main(int argc, char** argv) {
 		frame_range_end = strtol(p.second.c_str(), nullptr, 0) + 1;
 	}
 
+	// The owners of the bytes the span views: they must outlive the
+	// absl::visit below.  fcd561fb turned in_bytes from a copying
+	// std::vector into a Span but left both owners scoped to their
+	// if/else blocks -- the mapping was unmapped (and the stdin vector
+	// freed) before the bitstream was parsed, and every invocation
+	// crashed in the sync-word search (use-after-free).
+	std::unique_ptr<prjxray::MemoryMappedFile> in_file;
+	std::vector<uint8_t> stdin_bytes;
 	absl::Span<uint8_t> in_bytes;
 	if (argc == 2) {
 		auto in_file_name = argv[1];
-		auto in_file =
-		    prjxray::MemoryMappedFile::InitWithFile(in_file_name);
+		in_file = prjxray::MemoryMappedFile::InitWithFile(in_file_name);
 		if (!in_file) {
 			std::cerr << "Can't open input file '" << in_file_name
 			          << "' for reading!" << std::endl;
@@ -336,15 +343,15 @@ int main(int argc, char** argv) {
 		in_bytes = absl::Span<uint8_t>(
 		    static_cast<uint8_t*>(in_file->data()), in_file->size());
 	} else {
-		std::vector<uint8_t> t;
 		while (1) {
 			int c = getchar();
 			if (c == EOF)
 				break;
-			t.push_back(c);
+			stdin_bytes.push_back(c);
 		}
 		in_bytes = absl::Span<uint8_t>(
-			static_cast<uint8_t*>(t.data()), t.size());
+			static_cast<uint8_t*>(stdin_bytes.data()),
+			stdin_bytes.size());
 
 		std::cout << "Bitstream size: " << in_bytes.size() << " bytes"
 		          << std::endl;
