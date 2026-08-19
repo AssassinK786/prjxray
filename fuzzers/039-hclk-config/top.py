@@ -16,6 +16,11 @@ from prjxray.db import Database
 from prjxray import util
 from prjxray.lut_maker import LutMaker
 
+# Use the IOSTANDARD set by the part's settings script
+# (LVCMOS33 on HR banks, LVCMOS18 on HP banks). Falls back to LVCMOS33
+# to preserve the historical kintex7 behaviour when the env var is unset.
+IOSTANDARD = os.getenv('XRAY_IOSTANDARD', 'LVCMOS33')
+
 
 def gen_sites():
     xy_fun = util.create_xy_fun('BUFR_')
@@ -56,9 +61,11 @@ def gen_sites():
         if not sites:
             continue
 
+        # variable still named 'ioi3' but the check below accepts either
+        # IOI3 (HR-bank, kintex7) or IOI (HP-bank, virtex7 xc7vx485tffg1761-2).
         ioi3 = grid.gridinfo_at_loc((loc.grid_x, loc.grid_y - 1))
 
-        if 'IOI3' not in ioi3.tile_type:
+        if 'IOI3' not in ioi3.tile_type and 'IOI' not in ioi3.tile_type:
             continue
 
         if ioi3.tile_type.startswith('R'):
@@ -75,7 +82,8 @@ def gen_sites():
             iob = grid.gridinfo_at_loc((loc.grid_x + dx, loc.grid_y + dy))
 
             for site, site_type in iob.sites.items():
-                if site_type == 'IOB33M':
+                # IOB33M = HR-bank (kintex7); IOB18M = HP-bank (virtex7).
+                if site_type in ('IOB33M', 'IOB18M'):
                     iobs.append(site)
                 elif site_type == 'IOB33S':
                     iobs_s.append(site)
@@ -111,7 +119,7 @@ def main():
 
         (* KEEP, DONT_TOUCH, LOC="{site}" *)
         IBUF #(
-            .IOSTANDARD("LVCMOS33")
+            .IOSTANDARD("{iostandard}")
             ) ibuf_{site} (
                 .I(clks[{idx}]),
                 .O({ioclk})
@@ -119,6 +127,7 @@ def main():
                     ioclk=ioclk,
                     site=iob,
                     idx=idx,
+                    iostandard=IOSTANDARD,
                 ))
 
         for site, x, y in sites:
