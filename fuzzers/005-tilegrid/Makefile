@@ -6,13 +6,33 @@
 #
 # SPDX-License-Identifier: ISC
 
+# I/O bank types present on the target device. Most 7-series parts have
+# high-range (HR) banks; Virtex-7 "VX" parts are high-performance (HP) only.
+HAS_HIGH_RANGE_BANKS ?= 1
+HAS_HIGH_PERFORMANCE_BANKS ?= 0
+
+ifeq (${XRAY_DATABASE}, virtex7)
+HAS_HIGH_PERFORMANCE_BANKS = 1
+# TODO: some virtex devices also have high range banks
+HAS_HIGH_RANGE_BANKS = 0
+endif
+ifeq (${XRAY_DATABASE}, kintex7)
+# xc7k420t/xc7k480t have no high performance banks
+ifneq (${XRAY_FABRIC}, $(filter ${XRAY_FABRIC}, xc7k480t))
+HAS_HIGH_PERFORMANCE_BANKS = 1
+endif
+endif
+
 FUZDIR=$(shell pwd)
 BUILD_FOLDER=build_${XRAY_PART}
 BUILD_DIR=$(FUZDIR)/$(BUILD_FOLDER)
 TILEGRID_TDB_DEPENDENCIES=
+# High-range (HR) bank I/O tiles
+ifeq (${HAS_HIGH_RANGE_BANKS}, 1)
 TILEGRID_TDB_DEPENDENCIES += iob/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += iob_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += ioi/$(BUILD_FOLDER)/segbits_tilegrid.tdb
+endif
 TILEGRID_TDB_DEPENDENCIES += monitor/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += bram/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += bram_block/$(BUILD_FOLDER)/segbits_tilegrid.tdb
@@ -57,19 +77,30 @@ TILEGRID_TDB_DEPENDENCIES += ioi18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 endif
 endif
 
-# Kintex7 only fuzzers
-ifeq (${XRAY_DATABASE}, kintex7)
-# xc7k420t/xc7k480t have no high performance banks
-ifneq (${XRAY_FABRIC}, $(filter ${XRAY_FABRIC}, xc7k480t))
+# High-performance (HP) bank I/O fuzzers.
+# Present on Kintex-7 (except xc7k480t) and Virtex-7 VX parts.
+ifeq (${HAS_HIGH_PERFORMANCE_BANKS}, 1)
 TILEGRID_TDB_DEPENDENCIES += iob18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += iob18_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb
+# iob18_sing is intentionally NOT a tilegrid dependency: SING tiles inherit
+# their base address from the parent IOB18 column via propagate_IOB_SING in
+# generate_full.py, not via direct measurement. The iob18_sing rule below is
+# kept so the build can still be invoked manually as a Vivado-measurement
+# guard (its tdb half-aligns at offset+1 - exactly what propagate_IOB_SING's
+# top-tile alias models with offset=99).
 TILEGRID_TDB_DEPENDENCIES += ioi18/$(BUILD_FOLDER)/segbits_tilegrid.tdb
+# GTX transceiver fuzzers. Kintex-7 only: the xc7vx485t-ffg1761 package used for
+# virtex7 bonds only ~7 of its 14 GTX quads, so the unbonded GTX_COMMON tiles
+# cannot be placed/fuzzed. GTX is therefore skipped for virtex7.
+ifneq (${XRAY_DATABASE}, virtex7)
 TILEGRID_TDB_DEPENDENCIES += gtx_common/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += gtx_channel/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 TILEGRID_TDB_DEPENDENCIES += gtx_int_interface/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 endif
+endif
 
 # These kintex parts give an empty design
+ifeq (${XRAY_DATABASE}, kintex7)
 ifneq (${XRAY_FABRIC}, $(filter ${XRAY_FABRIC}, xc7k160t xc7k325t xc7k480t))
 TILEGRID_TDB_DEPENDENCIES += orphan_int_column/$(BUILD_FOLDER)/segbits_tilegrid.tdb
 endif
@@ -115,6 +146,9 @@ iob_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 
 iob18_int/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 	cd iob18_int && test -s ${OKFLAG} || ($(MAKE) && touch ${OKFLAG})
+
+iob18_sing/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
+	cd iob18_sing && $(MAKE)
 
 ioi/$(BUILD_FOLDER)/segbits_tilegrid.tdb: ${BASICDB_TILEGRID}
 	cd ioi && test -s ${OKFLAG} || ($(MAKE) && touch ${OKFLAG})
@@ -221,6 +255,7 @@ clean:
 	cd iob18 && $(MAKE) clean
 	cd iob_int && $(MAKE) clean
 	cd iob18_int && $(MAKE) clean
+	cd iob18_sing && $(MAKE) clean
 	cd ioi && $(MAKE) clean
 	cd ioi18 && $(MAKE) clean
 	cd mmcm && $(MAKE) clean
@@ -259,6 +294,7 @@ clean_part:
 	cd iob18 && $(MAKE) clean_part
 	cd iob_int && $(MAKE) clean_part
 	cd iob18_int && $(MAKE) clean_part
+	cd iob18_sing && $(MAKE) clean_part
 	cd ioi && $(MAKE) clean_part
 	cd ioi18 && $(MAKE) clean_part
 	cd mmcm && $(MAKE) clean_part

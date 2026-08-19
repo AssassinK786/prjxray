@@ -9,10 +9,31 @@ N ?= 50
 
 include ../fuzzer.mk
 
-ifeq ($(XRAY_DATABASE), $(filter {XRAY_DATABASE}, kintex7 zynq7))
+ifeq ($(XRAY_DATABASE),virtex7)
+# virtex7 xc7vx485tffg1761-2 is HP-only: top.py targets HCLK_IOI sites and
+# the segmaker writes 'segdata_hclk_ioi.txt' (tile type HCLK_IOI). On
+# kintex7 the BUFR fuzzer historically only exercised HR sites
+# (HCLK_IOI3 → segdata_hclk_ioi3.txt) and HP results were sed-derived; that
+# direction is inverted for HP-only parts.
 database: build/segbits_hclk_ioi.db
-endif
+
+build/segbits_hclk_ioi.rdb: $(SPECIMENS_OK)
+	${XRAY_SEGMATCH} -c 5 -o build/segbits_hclk_ioi.rdb \
+		$(addsuffix /segdata_hclk_ioi.txt,$(SPECIMENS))
+
+build/segbits_hclk_ioi.db: build/segbits_hclk_ioi.rdb
+	${XRAY_DBFIXUP} --db-root build --zero-db bits.dbf \
+		--seg-fn-in build/segbits_hclk_ioi.rdb \
+		--seg-fn-out build/segbits_hclk_ioi.db
+	${XRAY_MASKMERGE} build/mask_hclk_ioi.db \
+		$(addsuffix /segdata_hclk_ioi.txt,$(SPECIMENS))
+else
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 zynq7))
+database: build/segbits_hclk_ioi.db
+else
 database: build/segbits_hclk_ioi3.db
+endif
+endif
 
 build/segbits_hclk_ioi3.rdb: $(SPECIMENS_OK)
 	${XRAY_SEGMATCH} -c 5 -o build/segbits_hclk_ioi3.rdb \
@@ -25,18 +46,22 @@ build/segbits_hclk_ioi3.db: build/segbits_hclk_ioi3.rdb
 	${XRAY_MASKMERGE} build/mask_hclk_ioi3.db \
 		$(addsuffix /segdata_hclk_ioi3.txt,$(SPECIMENS))
 
-# The fuzzer results for the high performance banks
-# are identical, so just copy those
-ifeq ($(XRAY_DATABASE), $(filter {XRAY_DATABASE}, kintex7 zynq7))
+# The fuzzer results for the high performance banks on kintex7 and zynq7
+# are identical to the HR banks; just sed-rename the HR-derived data.
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 zynq7))
 build/segbits_hclk_ioi.db: build/segbits_hclk_ioi3.db
 	sed -e 's/HCLK_IOI3/HCLK_IOI/g' $< > $@
 	cp build/mask_hclk_ioi3.db build/mask_hclk_ioi.db
 endif
 
 pushdb: database
+# On HP-only parts (virtex7 xc7vx485tffg1761-2) there is no HCLK_IOI3
+# segdata, so skip the hclk_ioi3 merge to avoid a missing-file error.
+ifneq ($(XRAY_DATABASE),virtex7)
 	${XRAY_MERGEDB} hclk_ioi3 build/segbits_hclk_ioi3.db
 	${XRAY_MERGEDB} mask_hclk_ioi3 build/mask_hclk_ioi3.db
-ifeq ($(XRAY_DATABASE), $(filter {XRAY_DATABASE}, kintex7 zynq7))
+endif
+ifneq (,$(filter $(XRAY_DATABASE),kintex7 zynq7 virtex7))
 	${XRAY_MERGEDB} hclk_ioi build/segbits_hclk_ioi.db
 	${XRAY_MERGEDB} mask_hclk_ioi build/mask_hclk_ioi.db
 endif
