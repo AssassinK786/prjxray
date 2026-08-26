@@ -7,7 +7,7 @@
 #
 # SPDX-License-Identifier: ISC
 export XRAY_DATABASE="spartan7"
-export XRAY_PART="xc7s50fgga484-1"
+export XRAY_PART="xc7s25csga324-1"
 export XRAY_ROI_FRAMES="0x00000000:0xffffffff"
 
 # All CLB's in part, all BRAM's in part, all DSP's in part.
@@ -35,11 +35,11 @@ export XRAY_ROI_GRID_Y2="51"
 export XRAY_PIN_00="F14"
 # data pins
 export XRAY_PIN_01="F13"
-export XRAY_PIN_02="F12"
-export XRAY_PIN_03="F11"
-export XRAY_PIN_04="G11"
-export XRAY_PIN_05="G10"
-export XRAY_PIN_06="G13"
+export XRAY_PIN_02="E13"
+export XRAY_PIN_03="H15"
+export XRAY_PIN_04="G15"
+export XRAY_PIN_05="K16"
+export XRAY_PIN_06="J16"
 
 source $(dirname ${BASH_SOURCE[0]:-$0})/../utils/environment.sh
 
