@@ -6,7 +6,7 @@
 # https://opensource.org/licenses/ISC
 #
 # SPDX-License-Identifier: ISC
-XRAY_ENV_PATH="${BASH_SOURCE[0]}"
+XRAY_ENV_PATH="${BASH_SOURCE[0]:-$0}"
 while [ -h "$XRAY_ENV_PATH" ]; do # resolve $XRAY_ENV_PATH until the file is no longer a symlink
   XRAY_UTILS_DIR="$( cd -P "$( dirname "$XRAY_ENV_PATH" )" && pwd )"
   XRAY_ENV_PATH="$(readlink "$XRAY_ENV_PATH")"

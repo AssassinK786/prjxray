@@ -1,6 +1,9 @@
 # device to fabric mapping
 "xc7s50":
   fabric: "xc7s50"
-  
 "xc7s25":
+  fabric: "xc7s25"
+"xc7s6":
+  fabric: "xc7s25"
+"xc7s15":
   fabric: "xc7s25"

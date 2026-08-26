@@ -41,7 +41,7 @@ export XRAY_PIN_04="G11"
 export XRAY_PIN_05="G10"
 export XRAY_PIN_06="G13"
 
-source $(dirname ${BASH_SOURCE[0]})/../utils/environment.sh
+source $(dirname ${BASH_SOURCE[0]:-$0})/../utils/environment.sh
 
 eval $(python3 ${XRAY_UTILS_DIR}/create_environment.py)
 ENV_RET=$?
