@@ -52,12 +52,12 @@ export XRAY_TCL_REFORMAT="${XRAY_UTILS_DIR}/tcl-reformat.sh"
 export XRAY_VIVADO="${XRAY_UTILS_DIR}/vivado.sh"
 
 # Verify an approved version is in use
-export XRAY_VIVADO_SETTINGS="${XRAY_VIVADO_SETTINGS:-/opt/Xilinx/Vivado/2017.2/settings64.sh}"
+export XRAY_VIVADO_SETTINGS="${XRAY_VIVADO_SETTINGS:-/opt/Xilinx/Vivado/2024.1/settings64.sh}"
 # Most families require Vivado v2017.2 (see prjxray issue #14). A family may
 # override XRAY_VIVADO_VERSION (and XRAY_VIVADO_SETTINGS) in its settings file:
 # e.g. virtex7 needs v2020.1 because only that version checks out a Virtex-7
 # synthesis license on this setup (2017.2 is refused by the license manager).
-export XRAY_VIVADO_VERSION="${XRAY_VIVADO_VERSION:-v2017.2}"
+export XRAY_VIVADO_VERSION="${XRAY_VIVADO_VERSION:-v2024.1}"
 if [ "$(${XRAY_VIVADO} -h |grep Vivado |cut -d\  -f 2)" != "${XRAY_VIVADO_VERSION}" ] ; then
     echo "Requires Vivado ${XRAY_VIVADO_VERSION}. See https://github.com/SymbiFlow/prjxray/issues/14"
     # Can't exit since sourced script
