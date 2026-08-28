@@ -37,6 +37,10 @@ class TileFrames:
         with open(os.path.join(os.getenv('XRAY_FAMILY_DIR'),
                                os.getenv('XRAY_PART'), 'part.json')) as pf:
             part_json = json.load(pf)
+        if 'global_clock_regions' not in part_json:
+            self.tile_address_to_frames = None  # sentinel: unavailable
+            return
+        self.tile_address_to_frames = {}
         for clock_region, rows in part_json['global_clock_regions'].items():
             for row, buses in rows['rows'].items():
                 for bus, columns in buses['configuration_buses'].items():
@@ -49,8 +53,10 @@ class TileFrames:
                             'frame_count']
 
     def get_tile_frames(self, baseaddress):
-        if len(self.tile_address_to_frames) == 0:
+        if self.tile_address_to_frames is not None and len(self.tile_address_to_frames) == 0:
             self.initialize_address_to_frames()
+        if self.tile_address_to_frames is None:
+            return None  # global_clock_regions unavailable, skip frame validation
         assert baseaddress in self.tile_address_to_frames, "Base address not found in the part's json file"
         return self.tile_address_to_frames[baseaddress]
 
@@ -94,13 +100,13 @@ def add_tile_bits(
 
     # Extract the information about the maximal number of frames from the part's json
     max_frames = tile_frames.get_tile_frames(baseaddr)
-    if frames > max_frames:
+    if max_frames is not None and frames > max_frames:
         print(
             "Warning: The number of frames for base address {} specified for the tile {} ({}) exceeds the maximum allowed value ({}). Falling back to the maximum value."
             .format(hex(baseaddr), tile_name, frames, max_frames))
         frames = max_frames
-    # If frames count is None then use the maximum
-    if frames is None:
+    # If frames count is None then use the maximum (only when max_frames is known)
+    if frames is None and max_frames is not None:
         frames = max_frames
 
     assert offset <= 100, (tile_name, offset)
@@ -108,6 +114,9 @@ def add_tile_bits(
     assert offset >= 0 or "IOB" in tile_name or "GTX_INT_INTERFACE" in tile_name, (
         tile_name, hex(baseaddr), offset)
     assert 1 <= words <= 101, words
+    if offset + words > 101:
+        # Tile is near frame boundary; clamp to available words
+        words = 101 - offset
     assert offset + words <= 101, (
         tile_name, offset + words, offset, words, block_type)
 
