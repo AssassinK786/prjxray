@@ -7,7 +7,7 @@
 #
 # SPDX-License-Identifier: ISC
 export XRAY_DATABASE="spartan7"
-export XRAY_PART="xc7s25csga324-1"
+export XRAY_PART="xc7s100fgga676-1"
 export XRAY_ROI_FRAMES="0x00000000:0xffffffff"
 
 # All CLB's in part, all BRAM's in part, all DSP's in part.
@@ -20,7 +20,7 @@ export XRAY_EXCLUDE_ROI_TILEGRID=""
 # (special handling for frame addresses of certain IOIs -- see the script for details).
 # This needs to be changed for any new device!
 # If you have a FASM mismatch or unknown bits in IOIs, CHECK THIS FIRST.
-export XRAY_IOI3_TILES="LIOI3_X0Y9 RIOI3_X43Y9"
+export XRAY_IOI3_TILES="LIOI3_X0Y9 RIOI3_X53Y9"
 
 # These settings must remain in sync
 export XRAY_ROI="SLICE_X0Y100:SLICE_X35Y149 RAMB18_X0Y40:RAMB18_X0Y59 RAMB36_X0Y20:RAMB36_X0Y29 DSP48_X0Y40:DSP48_X0Y59 IOB_X0Y100:IOB_X0Y149"

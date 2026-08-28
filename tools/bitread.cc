@@ -320,6 +320,7 @@ int main(int argc, char** argv) {
 	}
 
 	absl::Span<uint8_t> in_bytes;
+	std::vector<uint8_t> in_data;  // owns bytes; outlives the if/else
 	if (argc == 2) {
 		auto in_file_name = argv[1];
 		auto in_file =
@@ -333,21 +334,21 @@ int main(int argc, char** argv) {
 		std::cout << "Bitstream size: " << in_file->size() << " bytes"
 		          << std::endl;
 
-		in_bytes = absl::Span<uint8_t>(
-		    static_cast<uint8_t*>(in_file->data()), in_file->size());
+		// Copy mmap bytes into vector before in_file destructor munmaps
+		in_data.assign(static_cast<uint8_t*>(in_file->data()),
+		               static_cast<uint8_t*>(in_file->data()) + in_file->size());
+		in_bytes = absl::Span<uint8_t>(in_data.data(), in_data.size());
 	} else {
-		std::vector<uint8_t> t;
 		while (1) {
 			int c = getchar();
 			if (c == EOF)
 				break;
-			t.push_back(c);
+			in_data.push_back(c);
 		}
-		in_bytes = absl::Span<uint8_t>(
-			static_cast<uint8_t*>(t.data()), t.size());
 
-		std::cout << "Bitstream size: " << in_bytes.size() << " bytes"
+		std::cout << "Bitstream size: " << in_data.size() << " bytes"
 		          << std::endl;
+		in_bytes = absl::Span<uint8_t>(in_data.data(), in_data.size());
 	}
 
 	xilinx::Architecture::Container arch_container =
