@@ -213,6 +213,11 @@ $(eval $(call fuzzer,056-pip-rem,049-int-imux-gfan 050-pip-seed 051-pip-imuxlout
 $(eval $(call fuzzer,057-pip-bi,056-pip-rem,all))
 ifneq ($(QUICK),Y)
 $(eval $(call fuzzer,058-pip-hclk,005-tilegrid,all))
+# 039a needs the HCLK_IOI3 / IOB33 tiles of a high-range bank, and merges
+# into files 045 and 058 own, so it runs after both.
+ifeq ($(HAS_HIGH_RANGE_BANKS),1)
+$(eval $(call fuzzer,039a-hclk-bufrclk-perfclk,005-tilegrid 045-hclk-cmt-pips 058-pip-hclk,all))
+endif
 $(eval $(call fuzzer,059-pip-byp-bounce,048-int-piplist,all))
 $(eval $(call fuzzer,060-bram-cascades,005-tilegrid,all))
 $(eval $(call fuzzer,071-ppips,057-pip-bi 058-pip-hclk 060-bram-cascades,all))
