@@ -133,8 +133,10 @@ class Database(object):
     def _read_tilegrid(self):
         """ Read tilegrid database if not already read. """
         if not self.tilegrid:
-            with open(os.path.join(self.db_root, self.fabric,
-                                   'tilegrid.json')) as f:
+            _tg = os.path.join(self.db_root, self.fabric, 'tilegrid.json')
+            if not os.path.exists(_tg):
+                _tg = os.path.join(self.db_root, 'tilegrid.json')
+            with open(_tg) as f:
                 self.tilegrid = json.load(f)
 
     def _read_tileconn(self):
