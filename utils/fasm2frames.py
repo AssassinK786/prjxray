@@ -17,6 +17,7 @@ import json
 import os
 import os.path
 import csv
+import re
 
 from collections import defaultdict
 
@@ -71,6 +72,85 @@ def dump_frm(f, frames):
         words = frames[addr]
         f.write(
             '0x%08X ' % addr + ','.join(['0x%08X' % w for w in words]) + '\n')
+
+
+_TILE_XY_RE = re.compile(r"^(.*)_X(\d+)Y(\d+)$")
+
+
+def add_fabric_tilename_aliases(tile_to_bank, bank_to_tile, db_root, part_data):
+    """
+    prjxray-db's fabric-level tilegrid.json (<db_root>/<fabric>/tilegrid.json
+    -- what nextpnr-xilinx's bbaexport reads, and what tile names in the
+    actual FASM output use) can disagree with the package-level
+    tilegrid.json / package_pins.csv (what tile_to_bank above is built from)
+    about a tile's X coordinate. Same physical tile, two different names.
+
+    Observed on xc7s25csga324-1: RIOB33/RIOI3/IO_INT_INTERFACE_R tiles are
+    consistently offset by +12 in X between the two files (e.g. package-level
+    "RIOB33_X31Y37" is fabric-level "RIOB33_X43Y37"). Without this, STEPDOWN
+    (and any other bank-keyed tile_to_bank.get() lookup) silently skips
+    affected tiles, because the FASM tag's fabric-level tile name never
+    matches any key we populated from package_pins.csv.
+
+    Rather than hardcode that +12 (which may not hold for every part), cross
+    reference the two tilegrid.json files directly: for every fabric-level
+    tile sharing a (tile-type prefix, Y-coordinate) with an already-known
+    package-level tile whose OWN name isn't itself a valid fabric tile (i.e.
+    it's genuinely unresolvable against the fabric-level grid `db` is built
+    from), alias/replace it with the fabric-level name.
+
+    This also has to fix up bank_to_tile, not just tile_to_bank: downstream,
+    the "walk every tile of an affected bank" step (further down in `run()`)
+    looks up each bank_to_tile[bank] entry against `db` (fabric-level) via
+    get_iob_sites()/gridinfo_at_tilename() -- a package-only tile name fails
+    there with a KeyError, the same underlying mismatch, just hit from the
+    other direction.
+    """
+    fabric = part_data.get("fabric")
+    if fabric is None:
+        return
+    fabric_grid_path = os.path.join(db_root, fabric, "tilegrid.json")
+    if not os.path.isfile(fabric_grid_path):
+        return
+    with OpenSafeFile(fabric_grid_path, "r") as fp:
+        fabric_tiles = json.load(fp)
+    fabric_tile_set = set(fabric_tiles)
+
+    # Index already-known (package-level) tiles by (prefix, Y).
+    by_prefix_y = {}
+    for tile in list(tile_to_bank.keys()):
+        m = _TILE_XY_RE.match(tile)
+        if not m:
+            continue
+        by_prefix_y.setdefault((m.group(1), m.group(3)), tile)
+
+    added = 0
+    replaced = 0
+    for fabric_tile in fabric_tiles:
+        if fabric_tile in tile_to_bank:
+            continue
+        m = _TILE_XY_RE.match(fabric_tile)
+        if not m:
+            continue
+        pkg_tile = by_prefix_y.get((m.group(1), m.group(3)))
+        if pkg_tile is None:
+            continue
+        bank = tile_to_bank[pkg_tile]
+        tile_to_bank[fabric_tile] = bank
+        added += 1
+        # If the package-level name isn't itself a real fabric tile, `db`
+        # (built from the fabric grid) can't resolve it -- swap it out of
+        # bank_to_tile for the fabric-level name so downstream per-tile
+        # lookups against `db` succeed.
+        if pkg_tile not in fabric_tile_set and pkg_tile in bank_to_tile[bank]:
+            bank_to_tile[bank].discard(pkg_tile)
+            bank_to_tile[bank].add(fabric_tile)
+            replaced += 1
+    if added:
+        print(
+            "INFO: added {} fabric/package tile-name alias(es) to "
+            "tile_to_bank ({} also replaced in bank_to_tile)"
+            .format(added, replaced))
 
 
 def find_pudc_b(db):
@@ -160,6 +240,8 @@ def run(
         for pin in package_pins:
             bank_to_tile[pin["bank"]].add(pin["tile"])
             tile_to_bank[pin["tile"]] = pin["bank"]
+
+        add_fabric_tilename_aliases(tile_to_bank, bank_to_tile, db_root, part_data)
 
     # Resolve PUDC_B site unconditionally — we need the tile name later in the
     # HP-bank glue walk to skip it (Vivado does not set IBUF_HP_BANK_GLUE on
@@ -281,7 +363,10 @@ def run(
 
                 # Store STEPDOWN related tags.
                 if "STEPDOWN" in tag:
-                    bank = tile_to_bank[tile]
+                    bank = tile_to_bank.get(tile)
+                    if bank is None:
+                        print("WARNING: skipping STEPDOWN for unmapped tile:", tile)
+                        continue
                     stepdown_banks.add(bank)
                     stepdown_tags[bank].add(tag)
 
