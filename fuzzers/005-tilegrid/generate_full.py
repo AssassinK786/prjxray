@@ -534,6 +534,48 @@ def propagate_IOI_Y9(database, tiles_by_grid):
         database[tile]['bits']['CLB_IO_CLK']['offset'] = 18
 
 
+def propagate_CFG_CENTER_MID(database, tiles_by_grid, tile_frames_map):
+    """ Give CFG_CENTER_MID its base address when the cfg fuzzer could not.
+
+    The cfg sub-fuzzer solves this tile by sweeping BSCANE2's JTAG_CHAIN
+    between 1 and 2.  On spartan7 Vivado writes the JTAG_CHAIN_1 bit whichever
+    value the netlist asks for, so the tag never toggles, segmatch reports
+    "<0 candidates>" and the tile ends up with no bits at all: xc7s100 has
+    shipped that way since it was added, and utils/checkdb.py aborts on it with
+    "block type BlockType.CLB_IO_CLK is not present in current tile".
+
+    Nothing about the address is unknown, though.  CFG_CENTER_MID spans its
+    whole clock-region row -- offset 0, 101 words, as in every device model in
+    the database -- and its configuration column is measured by the cfg_int
+    fuzzer on the INT tiles of that same column.  Take it from there, and leave
+    a tile the cfg fuzzer did solve alone.
+    """
+    for tile_name in sorted(database.keys()):
+        tile = database[tile_name]
+        if tile['type'] != 'CFG_CENTER_MID' or tile['bits']:
+            continue
+        # walk right along the row to the interconnect column of this
+        # configuration column
+        grid_x = tile['grid_x']
+        while True:
+            grid_x += 1
+            neighbour = tiles_by_grid.get((grid_x, tile['grid_y']))
+            if neighbour is None:
+                break
+            ntile = database[neighbour]
+            if ntile['type'] not in ('INT_L', 'INT_R'):
+                continue
+            bits = ntile['bits'].get('CLB_IO_CLK')
+            if bits is None:
+                break
+            baseaddr = int(bits['baseaddr'], 0)
+            localutil.add_tile_bits(
+                tile_name, tile, baseaddr, 0,
+                tile_frames_map.get_tile_frames(baseaddr), 101,
+                tile_frames_map)
+            break
+
+
 def alias_HCLKs(database):
     """ Generate HCLK aliases for HCLK_[LR] subsets.
 
@@ -578,6 +620,7 @@ def run(json_in_fn, json_out_fn, verbose=False):
     propagate_IOB_SING(database, tiles_by_grid)
     propagate_IOI_SING(database, tiles_by_grid)
     propagate_IOI_Y9(database, tiles_by_grid)
+    propagate_CFG_CENTER_MID(database, tiles_by_grid, tile_frames_map)
     alias_HCLKs(database)
 
     # Save
